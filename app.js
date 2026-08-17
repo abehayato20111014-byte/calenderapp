@@ -5,13 +5,13 @@
 dayjs.locale('ja');
 
 const firebaseConfig = {
-    apiKey: "AIzaSyDummyKeyForScholaPlannerApp",
-    authDomain: "schola-planner.firebaseapp.com",
-    databaseURL: "https://schola-planner-default-rtdb.firebaseio.com",
-    projectId: "schola-planner",
-    storageBucket: "schola-planner.appspot.com",
-    messagingSenderId: "000000000000",
-    appId: "1:000000000000:web:0000000000000000000000"
+    apiKey: "AIzaSyDOJMMM9mlLPv-v-FY38NgyEn197HfuNz8",
+    authDomain: "project-3274200529122638548.firebaseapp.com",
+    databaseURL: "https://project-3274200529122638548-default-rtdb.firebaseio.com",
+    projectId: "project-3274200529122638548",
+    storageBucket: "project-3274200529122638548.firebasestorage.app",
+    messagingSenderId: "307664229113",
+    appId: "1:307664229113:web:3feceb6320b93f5bdc4828"
 };
 
 const DEFAULT_COLORS = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#6b7280'];
