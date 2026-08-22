@@ -4,441 +4,461 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Schola Planner</title>
-    
+
     <script src="https://cdn.jsdelivr.net/npm/dayjs@1/dayjs.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/dayjs@1/locale/ja.js"></script>
-    
+
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
-    
+
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div id="appContainer" class="app-container tab-pos-bottom">
-        <header class="app-header">
-            <div class="header-left">
-                <div id="headerAvatar" class="avatar">👤</div>
-                <h1 class="app-title">Schola Planner</h1>
-            </div>
-            <button id="showTutorialBtn" class="btn btn-icon" title="使い方">❓</button>
-        </header>
+<div id="appContainer" class="app-container tab-pos-bottom">
+    <header class="app-header">
+        <div class="header-left">
+            <div id="headerAvatar" class="avatar">👤</div>
+            <h1 class="app-title">Schola Planner</h1>
+        </div>
+        <button id="showTutorialBtn" class="btn btn-icon" title="使い方">❓</button>
+    </header>
 
-        <main id="view-dayweek" class="tab-content active">
-            <div class="view-controls">
-                <div class="sub-view-tabs">
-                    <button id="btnViewDay" class="btn btn-sub-tab active">日</button>
-                    <button id="btnViewWeek" class="btn btn-sub-tab">週</button>
+    <main id="view-dayweek" class="tab-content active">
+        <div class="view-controls">
+            <div class="sub-view-tabs">
+                <button id="btnViewDay" class="btn btn-sub-tab active">日</button>
+                <button id="btnViewWeek" class="btn btn-sub-tab">週</button>
+            </div>
+            <div class="date-navigator">
+                <button id="prevDateBtn" class="btn btn-icon">◀</button>
+                <span id="currentDateDisplay" class="date-display">----/--/--</span>
+                <button id="nextDateBtn" class="btn btn-icon">▶</button>
+                <button id="todayDateBtn" class="btn btn-small">今日</button>
+            </div>
+        </div>
+
+        <div id="dayTimelineView" class="timeline-wrapper">
+            <div id="timeAxis" class="time-axis"></div>
+            <div id="timelineBody" class="timeline-body">
+                <div id="currentTimeIndicator" class="current-time-line hidden"></div>
+                <div id="eventsContainer" class="events-container"></div>
+            </div>
+        </div>
+
+        <div id="weekTimelineView" class="week-wrapper hidden">
+            <div id="weekTimeAxis" class="time-axis"></div>
+            <div id="weekGridContainer" class="week-grid-container"></div>
+        </div>
+    </main>
+
+    <main id="view-month" class="tab-content">
+        <div class="month-controls">
+            <button id="prevMonthBtn" class="btn btn-icon">◀</button>
+            <button id="monthDisplay" class="btn btn-month-select">----年 --月</button>
+            <button id="nextMonthBtn" class="btn btn-icon">▶</button>
+            <button id="todayMonthBtn" class="btn btn-small">今月</button>
+        </div>
+        <div id="calendarSwipeArea" class="calendar-wrapper">
+            <div id="calendarWeekdays" class="calendar-weekdays"></div>
+            <div id="calendarGrid" class="calendar-grid"></div>
+        </div>
+    </main>
+
+    <main id="view-list" class="tab-content">
+        <div class="list-controls">
+            <input type="text" id="searchInput" placeholder="🔍 予定のタイトルで検索..." class="input-text search-bar">
+
+            <div class="filter-row">
+                <select id="sortOrderSelect" class="select-box">
+                    <option value="asc">📅 日時が近い順</option>
+                    <option value="desc">📅 日時が遠い順</option>
+                </select>
+                <label class="checkbox-label filter-checkbox">
+                    <input type="checkbox" id="showCompletedCheck" checked> 完了済みを表示
+                </label>
+            </div>
+
+            <div class="filter-row date-range-row">
+                <input type="date" id="filterStartDateInput" class="input-text">
+                <span class="range-separator">〜</span>
+                <input type="date" id="filterEndDateInput" class="input-text">
+                <button id="clearDateFilterBtn" class="btn btn-secondary btn-small">リセット</button>
+            </div>
+        </div>
+
+        <div id="detailedEventList" class="detailed-list-container"></div>
+    </main>
+
+    <main id="view-group" class="tab-content">
+        <div id="profileSetupCard" class="settings-card">
+            <h3>👤 プロフィール設定（クラウド同期）</h3>
+            <p style="font-size:0.8rem; color:#64748b; margin-top:4px; margin-bottom:8px;">
+                IDと名前を設定すると、予定のクラウド同期およびフレンド・グループ機能が利用可能になります。
+            </p>
+            <div style="display:flex; flex-direction:column; gap:8px;">
+                <input type="text" id="setupUserIdInput" placeholder="ユーザーID (例: user123)" class="input-text">
+                <input type="text" id="setupUserNameInput" placeholder="ユーザーネーム (例: 太郎)" class="input-text">
+                <button id="saveProfileBtn" class="btn btn-primary" style="margin-top:4px;">設定を保存して同期開始</button>
+            </div>
+        </div>
+
+        <div id="groupMainArea" class="hidden" style="display:flex; flex-direction:column; gap:12px;">
+            <div class="settings-card">
+                <div style="display:flex; align-items:center; justify-content:space-between;">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <div id="groupAvatar" class="avatar">👤</div>
+                        <div>
+                            <strong id="displayUserName">--</strong>
+                            <div id="displayUserId" style="font-size:0.75rem; color:#64748b;">ID: --</div>
+                        </div>
+                    </div>
+                    <div style="text-align:right;">
+                        <span id="syncStatusBadge" class="badge badge-success">☁️ クラウド同期中</span>
+                        <button id="editProfileBtn" class="btn btn-secondary" style="font-size:0.7rem; padding:2px 8px; margin-top:4px;">再設定</button>
+                    </div>
                 </div>
-                <div class="date-navigator">
-                    <button id="prevDateBtn" class="btn btn-icon">◀</button>
-                    <span id="currentDateDisplay" class="date-display">----/--/--</span>
-                    <button id="nextDateBtn" class="btn btn-icon">▶</button>
-                    <button id="todayDateBtn" class="btn btn-small">今日</button>
+            </div>
+
+            <div class="settings-card">
+                <h3 style="margin-bottom:8px;">🤝 フレンド欄</h3>
+                <div style="margin-bottom:12px; background:#eff6ff; padding:10px; border-radius:8px; border:1px solid #bfdbfe;">
+                    <strong style="font-size:0.85rem; color:#1e40af;">🔗 自分のフレンド招待リンク</strong>
+                    <p style="font-size:0.75rem; color:#3b82f6; margin-top:2px; margin-bottom:8px;">
+                        リンクをコピーして友達に送信すると、相手が直接あなたに申請できます。
+                    </p>
+                    <button id="copyInviteLinkBtn" class="btn btn-primary" style="width:100%; font-size:0.8rem;">
+                        📋 招待リンクをコピーする
+                    </button>
+                </div>
+
+                <div style="background:#f8fafc; padding:8px; border-radius:8px; border:1px solid var(--border-color, #e2e8f0);">
+                    <label style="font-size:0.8rem; font-weight:bold; color:#475569;">ユーザーIDでフレンド申請</label>
+                    <div style="display:flex; gap:6px; margin-top:6px;">
+                        <input type="text" id="friendSearchIdInput" placeholder="相手のユーザーIDを入力" class="input-text" style="flex:1;">
+                        <button id="sendFriendRequestBtn" class="btn btn-primary">申請送信</button>
+                    </div>
+                </div>
+
+                <div style="margin-top:12px;">
+                    <h4 style="font-size:0.85rem; color:#334155; margin-bottom:6px;">📩 届いている申請</h4>
+                    <div id="incomingRequestsList" style="display:flex; flex-direction:column; gap:6px;">
+                        <div style="font-size:0.8rem; color:#94a3b8;">届いている申請はありません</div>
+                    </div>
+                </div>
+
+                <div style="margin-top:12px;">
+                    <h4 style="font-size:0.85rem; color:#334155; margin-bottom:6px;">👥 フレンド一覧</h4>
+                    <div id="friendsList" style="display:flex; flex-direction:column; gap:6px;">
+                        <div style="font-size:0.8rem; color:#94a3b8;">まだフレンドがいません</div>
+                    </div>
                 </div>
             </div>
 
-            <div id="dayTimelineView" class="timeline-wrapper">
-                <div id="timeAxis" class="time-axis"></div>
-                <div id="timelineBody" class="timeline-body">
-                    <div id="currentTimeIndicator" class="current-time-line hidden"></div>
-                    <div id="eventsContainer" class="events-container"></div>
+            <div class="settings-card">
+                <h3 style="margin-bottom:8px;">👨‍👩‍👧‍👦 グループ欄</h3>
+                <div style="background:#f8fafc; padding:10px; border-radius:8px; border:1px solid var(--border-color, #e2e8f0);">
+                    <h4 style="font-size:0.85rem; color:#334155; margin-bottom:6px;">➕ 新規グループ作成</h4>
+                    <input type="text" id="newGroupNameInput" placeholder="グループ名 (例: 勉強グループ)" class="input-text" style="width:100%; margin-bottom:8px;">
+
+                    <div style="margin-bottom:8px;">
+                        <label style="font-size:0.75rem; color:#64748b; font-weight:bold;">招待するフレンドを選択:</label>
+                        <div id="createGroupFriendsSelect" style="max-height:100px; overflow-y:auto; background:#ffffff; border:1px solid #e2e8f0; border-radius:6px; padding:6px; margin-top:4px;">
+                            <div style="font-size:0.75rem; color:#94a3b8;">フレンドがいません</div>
+                        </div>
+                    </div>
+                    <button id="createGroupBtn" class="btn btn-primary" style="width:100%;">グループを作成</button>
+                </div>
+
+                <div style="margin-top:12px;">
+                    <h4 style="font-size:0.85rem; color:#334155; margin-bottom:6px;">📂 参加中のグループ</h4>
+                    <div id="myGroupsList" style="display:flex; flex-direction:column; gap:10px;">
+                        <div style="font-size:0.8rem; color:#94a3b8;">参加中のグループはありません</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <main id="view-settings" class="tab-content">
+        <div id="settingsMainCard" class="settings-card">
+            <h3>⚙️ アプリ設定</h3>
+
+            <div class="setting-item">
+                <label>完了した予定を自動削除</label>
+                <input type="checkbox" id="autoDeleteCompletedToggle">
+            </div>
+
+            <div class="setting-item">
+                <label>週の開始曜日</label>
+                <select id="weekStartSelect" class="select-box">
+                    <option value="sun">日曜日</option>
+                    <option value="mon">月曜日</option>
+                </select>
+            </div>
+
+            <!-- ⭐ タブバーの位置設定追加 -->
+            <div class="setting-item">
+                <label>タブバーの位置</label>
+                <select id="tabBarPositionSelect" class="select-box">
+                    <option value="bottom">下</option>
+                    <option value="right">右</option>
+                    <option value="left">左</option>
+                    <option value="top">上</option>
+                </select>
+            </div>
+
+            <div class="setting-item">
+                <label>ユーザーアイコン変更</label>
+                <input type="file" id="userIconInput" accept="image/*" class="input-file">
+            </div>
+
+            <div class="setting-item">
+                <label>背景画像の設定</label>
+                <div style="display:flex; gap:6px;">
+                    <input type="file" id="bgInput" accept="image/*" class="input-file">
+                    <button id="removeBgBtn" class="btn btn-secondary">解除</button>
                 </div>
             </div>
 
-            <div id="weekTimelineView" class="week-wrapper hidden">
-                <div id="weekTimeAxis" class="time-axis"></div>
-                <div id="weekGridContainer" class="week-grid-container"></div>
-            </div>
-        </main>
+            <button id="openColorDetailBtn" class="btn btn-secondary style-setting-btn">
+                🎨 カラーパレットの管理
+            </button>
+        </div>
 
-        <main id="view-month" class="tab-content">
-            <div class="month-controls">
-                <button id="prevMonthBtn" class="btn btn-icon">◀</button>
-                <button id="monthDisplay" class="btn btn-month-select">----年 --月</button>
-                <button id="nextMonthBtn" class="btn btn-icon">▶</button>
-                <button id="todayMonthBtn" class="btn btn-small">今月</button>
+        <div id="settingsColorDetail" class="settings-card hidden">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+                <h3>🎨 カラーパレット管理</h3>
+                <button id="backToSettingsBtn" class="btn btn-secondary">戻る</button>
             </div>
-            <div id="calendarSwipeArea" class="calendar-wrapper">
-                <div id="calendarWeekdays" class="calendar-weekdays"></div>
-                <div id="calendarGrid" class="calendar-grid"></div>
-            </div>
-        </main>
+            <div id="settingsColorList" class="color-palette-list"></div>
+            <button id="openAddColorModalBtn" class="btn btn-primary" style="margin-top:12px;">➕ 新しい色を追加</button>
+        </div>
+    </main>
 
-        <main id="view-list" class="tab-content">
-            <div class="list-controls">
-                <input type="text" id="searchInput" placeholder="🔍 予定のタイトルで検索..." class="input-text search-bar">
-                
-                <div class="filter-row">
-                    <select id="sortOrderSelect" class="select-box">
-                        <option value="asc">📅 日時が近い順</option>
-                        <option value="desc">📅 日時が遠い順</option>
+    <button id="addEventBtn" class="fab-btn" title="予定を追加">＋</button>
+
+    <nav class="bottom-nav">
+        <button class="nav-item active" data-tab="view-dayweek">
+            <span class="nav-icon">📅</span>
+            <span class="nav-label">日/週</span>
+        </button>
+        <button class="nav-item" data-tab="view-month">
+            <span class="nav-icon">📆</span>
+            <span class="nav-label">月</span>
+        </button>
+        <button class="nav-item" data-tab="view-list">
+            <span class="nav-icon">📋</span>
+            <span class="nav-label">リスト</span>
+        </button>
+        <button class="nav-item" data-tab="view-group">
+            <span class="nav-icon">👥</span>
+            <span class="nav-label">グループ</span>
+        </button>
+        <button class="nav-item" data-tab="view-settings">
+            <span class="nav-icon">⚙️</span>
+            <span class="nav-label">設定</span>
+        </button>
+    </nav>
+</div>
+
+<div id="eventModal" class="modal-backdrop hidden">
+    <div class="modal-card">
+        <div class="modal-header">
+            <h3 id="modalTitle">予定の追加・編集</h3>
+            <button id="closeModalBtn" class="btn btn-icon">✕</button>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="editEventId">
+
+            <div class="favorite-section">
+                <div style="display:flex; gap:6px; align-items:center;">
+                    <select id="favoriteTemplateSelect" class="select-box" style="flex:1;">
+                        <option value="">★ お気に入りから呼び出し...</option>
                     </select>
-                    <label class="checkbox-label filter-checkbox">
-                        <input type="checkbox" id="showCompletedCheck" checked> 完了済みを表示
-                    </label>
-                </div>
-                
-                <div class="filter-row date-range-row">
-                    <input type="date" id="filterStartDateInput" class="input-text">
-                    <span class="range-separator">〜</span>
-                    <input type="date" id="filterEndDateInput" class="input-text">
-                    <button id="clearDateFilterBtn" class="btn btn-secondary btn-small">リセット</button>
-                </div>
-            </div>
-            
-            <div id="detailedEventList" class="detailed-list-container"></div>
-        </main>
-
-        <main id="view-group" class="tab-content">
-            <div id="profileSetupCard" class="settings-card">
-                <h3>👤 プロフィール設定（クラウド同期）</h3>
-                <p style="font-size:0.8rem; color:#64748b; margin-top:4px; margin-bottom:8px;">
-                    IDと名前を設定すると、予定のクラウド同期およびフレンド・グループ機能が利用可能になります。
-                </p>
-                <div style="display:flex; flex-direction:column; gap:8px;">
-                    <input type="text" id="setupUserIdInput" placeholder="ユーザーID (例: user123)" class="input-text">
-                    <input type="text" id="setupUserNameInput" placeholder="ユーザーネーム (例: 太郎)" class="input-text">
-                    <button id="saveProfileBtn" class="btn btn-primary" style="margin-top:4px;">設定を保存して同期開始</button>
+                    <button id="saveFavoriteBtn" class="btn btn-secondary btn-small" type="button" title="現在の内容をお気に入りに登録">
+                        ★ お気に入り登録
+                    </button>
                 </div>
             </div>
 
-            <div id="groupMainArea" class="hidden" style="display:flex; flex-direction:column; gap:12px;">
-                <div class="settings-card">
-                    <div style="display:flex; align-items:center; justify-content:space-between;">
-                        <div style="display:flex; align-items:center; gap:10px;">
-                            <div id="groupAvatar" class="avatar">👤</div>
-                            <div>
-                                <strong id="displayUserName">--</strong>
-                                <div id="displayUserId" style="font-size:0.75rem; color:#64748b;">ID: --</div>
-                            </div>
-                        </div>
-                        <div style="text-align:right;">
-                            <span id="syncStatusBadge" class="badge badge-success">☁️ クラウド同期中</span>
-                            <button id="editProfileBtn" class="btn btn-secondary" style="font-size:0.7rem; padding:2px 8px; margin-top:4px;">再設定</button>
-                        </div>
-                    </div>
-                </div>
+            <div class="form-group">
+                <label>タイトル</label>
+                <input type="text" id="eventTitleInput" placeholder="予定名を入力" class="input-text">
+            </div>
 
-                <div class="settings-card">
-                    <h3 style="margin-bottom:8px;">🤝 フレンド欄</h3>
-                    <div style="margin-bottom:12px; background:#eff6ff; padding:10px; border-radius:8px; border:1px solid #bfdbfe;">
-                        <strong style="font-size:0.85rem; color:#1e40af;">🔗 自分のフレンド招待リンク</strong>
-                        <p style="font-size:0.75rem; color:#3b82f6; margin-top:2px; margin-bottom:8px;">
-                            リンクをコピーして友達に送信すると、相手が直接あなたに申請できます。
-                        </p>
-                        <button id="copyInviteLinkBtn" class="btn btn-primary" style="width:100%; font-size:0.8rem;">
-                            📋 招待リンクをコピーする
-                        </button>
-                    </div>
+            <div class="form-group row-group">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="eventImportantInput"> ⭐ 重要
+                </label>
+                <label class="checkbox-label">
+                    <input type="checkbox" id="eventAllDayInput"> 終日
+                </label>
+            </div>
 
-                    <div style="background:#f8fafc; padding:8px; border-radius:8px; border:1px solid var(--border-color, #e2e8f0);">
-                        <label style="font-size:0.8rem; font-weight:bold; color:#475569;">ユーザーIDでフレンド申請</label>
-                        <div style="display:flex; gap:6px; margin-top:6px;">
-                            <input type="text" id="friendSearchIdInput" placeholder="相手のユーザーIDを入力" class="input-text" style="flex:1;">
-                            <button id="sendFriendRequestBtn" class="btn btn-primary">申請送信</button>
-                        </div>
-                    </div>
+            <div class="repeat-section-card">
+                <label class="checkbox-label" style="font-weight:bold; color:#1e40af;">
+                    <input type="checkbox" id="eventRepeatInput"> 🔄 繰り返しを追加する
+                </label>
 
-                    <div style="margin-top:12px;">
-                        <h4 style="font-size:0.85rem; color:#334155; margin-bottom:6px;">📩 届いている申請</h4>
-                        <div id="incomingRequestsList" style="display:flex; flex-direction:column; gap:6px;">
-                            <div style="font-size:0.8rem; color:#94a3b8;">届いている申請はありません</div>
-                        </div>
-                    </div>
-
-                    <div style="margin-top:12px;">
-                        <h4 style="font-size:0.85rem; color:#334155; margin-bottom:6px;">👥 フレンド一覧</h4>
-                        <div id="friendsList" style="display:flex; flex-direction:column; gap:6px;">
-                            <div style="font-size:0.8rem; color:#94a3b8;">まだフレンドがいません</div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="settings-card">
-                    <h3 style="margin-bottom:8px;">👨‍👩‍👧‍👦 グループ欄</h3>
-                    <div style="background:#f8fafc; padding:10px; border-radius:8px; border:1px solid var(--border-color, #e2e8f0);">
-                        <h4 style="font-size:0.85rem; color:#334155; margin-bottom:6px;">➕ 新規グループ作成</h4>
-                        <input type="text" id="newGroupNameInput" placeholder="グループ名 (例: 勉強グループ)" class="input-text" style="width:100%; margin-bottom:8px;">
-                        
-                        <div style="margin-bottom:8px;">
-                            <label style="font-size:0.75rem; color:#64748b; font-weight:bold;">招待するフレンドを選択:</label>
-                            <div id="createGroupFriendsSelect" style="max-height:100px; overflow-y:auto; background:#ffffff; border:1px solid #e2e8f0; border-radius:6px; padding:6px; margin-top:4px;">
-                                <div style="font-size:0.75rem; color:#94a3b8;">フレンドがいません</div>
-                            </div>
-                        </div>
-                        <button id="createGroupBtn" class="btn btn-primary" style="width:100%;">グループを作成</button>
-                    </div>
-
-                    <div style="margin-top:12px;">
-                        <h4 style="font-size:0.85rem; color:#334155; margin-bottom:6px;">📂 参加中のグループ</h4>
-                        <div id="myGroupsList" style="display:flex; flex-direction:column; gap:10px;">
-                            <div style="font-size:0.8rem; color:#94a3b8;">参加中のグループはありません</div>
-                        </div>
+                <div id="repeatWeekdayContainer" class="repeat-weekday-container hidden">
+                    <span style="font-size:0.75rem; color:#475569; margin-bottom:4px; display:block;">繰り返す曜日を選択:</span>
+                    <div class="weekday-selector">
+                        <label class="day-chip"><input type="checkbox" value="0"><span>日</span></label>
+                        <label class="day-chip"><input type="checkbox" value="1"><span>月</span></label>
+                        <label class="day-chip"><input type="checkbox" value="2"><span>火</span></label>
+                        <label class="day-chip"><input type="checkbox" value="3"><span>水</span></label>
+                        <label class="day-chip"><input type="checkbox" value="4"><span>木</span></label>
+                        <label class="day-chip"><input type="checkbox" value="5"><span>金</span></label>
+                        <label class="day-chip"><input type="checkbox" value="6"><span>土</span></label>
                     </div>
                 </div>
             </div>
-        </main>
 
-        <main id="view-settings" class="tab-content">
-            <div id="settingsMainCard" class="settings-card">
-                <h3>⚙️ アプリ設定</h3>
-                
-                <div class="setting-item">
-                    <label>完了した予定を自動削除</label>
-                    <input type="checkbox" id="autoDeleteCompletedToggle">
+            <div class="form-group">
+                <label id="dateRangeLabel">開始日 〜 終了日</label>
+                <div style="display:flex; gap:6px;">
+                    <input type="date" id="eventStartDateInput" class="input-text">
+                    <input type="date" id="eventEndDateInput" class="input-text">
                 </div>
-                
-                <div class="setting-item">
-                    <label>週の開始曜日</label>
-                    <select id="weekStartSelect" class="select-box">
-                        <option value="sun">日曜日</option>
-                        <option value="mon">月曜日</option>
+            </div>
+
+            <div class="form-group">
+                <label>時間 (開始 〜 終了)</label>
+                <div style="display:flex; gap:6px;">
+                    <input type="time" id="eventStartInput" class="input-text">
+                    <input type="time" id="eventEndInput" class="input-text">
+                </div>
+            </div>
+
+            <!-- ⭐ Android/通知設定セクション追加 -->
+            <div class="form-group notification-section-card">
+                <label style="font-weight:bold; color:#1e40af; margin-bottom:4px; display:block;">🔔 通知（リマインダー）</label>
+                <div style="display:flex; gap:6px; align-items:center;">
+                    <input type="number" id="notificationValueInput" min="0" value="10" class="input-text" style="width:70px;">
+                    <select id="notificationUnitSelect" class="select-box" style="width:85px;">
+                        <option value="min">分前</option>
+                        <option value="hour">時間前</option>
+                        <option value="day">日前</option>
                     </select>
+                    <button id="addNotificationTimeBtn" type="button" class="btn btn-secondary btn-small">追加</button>
                 </div>
-
-                <!-- ⭐ タブバーの位置設定追加 -->
-                <div class="setting-item">
-                    <label>タブバーの位置</label>
-                    <select id="tabBarPositionSelect" class="select-box">
-                        <option value="bottom">下</option>
-                        <option value="right">右</option>
-                        <option value="left">左</option>
-                        <option value="top">上</option>
-                    </select>
-                </div>
-
-                <div class="setting-item">
-                    <label>ユーザーアイコン変更</label>
-                    <input type="file" id="userIconInput" accept="image/*" class="input-file">
-                </div>
-
-                <div class="setting-item">
-                    <label>背景画像の設定</label>
-                    <div style="display:flex; gap:6px;">
-                        <input type="file" id="bgInput" accept="image/*" class="input-file">
-                        <button id="removeBgBtn" class="btn btn-secondary">解除</button>
-                    </div>
-                </div>
-
-                <button id="openColorDetailBtn" class="btn btn-secondary style-setting-btn">
-                    🎨 カラーパレットの管理
-                </button>
+                <div id="notificationListContainer" class="notification-list-container"></div>
             </div>
 
-            <div id="settingsColorDetail" class="settings-card hidden">
-                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
-                    <h3>🎨 カラーパレット管理</h3>
-                    <button id="backToSettingsBtn" class="btn btn-secondary">戻る</button>
-                </div>
-                <div id="settingsColorList" class="color-palette-list"></div>
-                <button id="openAddColorModalBtn" class="btn btn-primary" style="margin-top:12px;">➕ 新しい色を追加</button>
+            <div class="form-group">
+                <label>カラータグ</label>
+                <div id="modalColorPalette" class="color-palette-selection"></div>
             </div>
-        </main>
+        </div>
 
-        <button id="addEventBtn" class="fab-btn" title="予定を追加">＋</button>
-
-        <nav class="bottom-nav">
-            <button class="nav-item active" data-tab="view-dayweek">
-                <span class="nav-icon">📅</span>
-                <span class="nav-label">日/週</span>
-            </button>
-            <button class="nav-item" data-tab="view-month">
-                <span class="nav-icon">📆</span>
-                <span class="nav-label">月</span>
-            </button>
-            <button class="nav-item" data-tab="view-list">
-                <span class="nav-icon">📋</span>
-                <span class="nav-label">リスト</span>
-            </button>
-            <button class="nav-item" data-tab="view-group">
-                <span class="nav-icon">👥</span>
-                <span class="nav-label">グループ</span>
-            </button>
-            <button class="nav-item" data-tab="view-settings">
-                <span class="nav-icon">⚙️</span>
-                <span class="nav-label">設定</span>
-            </button>
-        </nav>
-    </div>
-
-    <div id="eventModal" class="modal-backdrop hidden">
-        <div class="modal-card">
-            <div class="modal-header">
-                <h3 id="modalTitle">予定の追加・編集</h3>
-                <button id="closeModalBtn" class="btn btn-icon">✕</button>
-            </div>
-            <div class="modal-body">
-                <input type="hidden" id="editEventId">
-                
-                <div class="favorite-section">
-                    <div style="display:flex; gap:6px; align-items:center;">
-                        <select id="favoriteTemplateSelect" class="select-box" style="flex:1;">
-                            <option value="">★ お気に入りから呼び出し...</option>
-                        </select>
-                        <button id="saveFavoriteBtn" class="btn btn-secondary btn-small" type="button" title="現在の内容をお気に入りに登録">
-                            ★ お気に入り登録
-                        </button>
-                    </div>
-                </div>
-
-                <div class="form-group">
-                    <label>タイトル</label>
-                    <input type="text" id="eventTitleInput" placeholder="予定名を入力" class="input-text">
-                </div>
-
-                <div class="form-group row-group">
-                    <label class="checkbox-label">
-                        <input type="checkbox" id="eventImportantInput"> ⭐ 重要
-                    </label>
-                    <label class="checkbox-label">
-                        <input type="checkbox" id="eventAllDayInput"> 終日
-                    </label>
-                </div>
-
-                <div class="repeat-section-card">
-                    <label class="checkbox-label" style="font-weight:bold; color:#1e40af;">
-                        <input type="checkbox" id="eventRepeatInput"> 🔄 繰り返しを追加する
-                    </label>
-
-                    <div id="repeatWeekdayContainer" class="repeat-weekday-container hidden">
-                        <span style="font-size:0.75rem; color:#475569; margin-bottom:4px; display:block;">繰り返す曜日を選択:</span>
-                        <div class="weekday-selector">
-                            <label class="day-chip"><input type="checkbox" value="0"><span>日</span></label>
-                            <label class="day-chip"><input type="checkbox" value="1"><span>月</span></label>
-                            <label class="day-chip"><input type="checkbox" value="2"><span>火</span></label>
-                            <label class="day-chip"><input type="checkbox" value="3"><span>水</span></label>
-                            <label class="day-chip"><input type="checkbox" value="4"><span>木</span></label>
-                            <label class="day-chip"><input type="checkbox" value="5"><span>金</span></label>
-                            <label class="day-chip"><input type="checkbox" value="6"><span>土</span></label>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="form-group">
-                    <label id="dateRangeLabel">開始日 〜 終了日</label>
-                    <div style="display:flex; gap:6px;">
-                        <input type="date" id="eventStartDateInput" class="input-text">
-                        <input type="date" id="eventEndDateInput" class="input-text">
-                    </div>
-                </div>
-
-                <div class="form-group">
-                    <label>時間 (開始 〜 終了)</label>
-                    <div style="display:flex; gap:6px;">
-                        <input type="time" id="eventStartInput" class="input-text">
-                        <input type="time" id="eventEndInput" class="input-text">
-                    </div>
-                </div>
-
-                <!-- ⭐ Android/通知設定セクション追加 -->
-                <div class="form-group notification-section-card">
-                    <label style="font-weight:bold; color:#1e40af; margin-bottom:4px; display:block;">🔔 通知（リマインダー）</label>
-                    <div style="display:flex; gap:6px; align-items:center;">
-                        <input type="number" id="notificationValueInput" min="0" value="10" class="input-text" style="width:70px;">
-                        <select id="notificationUnitSelect" class="select-box" style="width:85px;">
-                            <option value="min">分前</option>
-                            <option value="hour">時間前</option>
-                            <option value="day">日前</option>
-                        </select>
-                        <button id="addNotificationTimeBtn" type="button" class="btn btn-secondary btn-small">追加</button>
-                    </div>
-                    <div id="notificationListContainer" class="notification-list-container"></div>
-                </div>
-
-                <div class="form-group">
-                    <label>カラータグ</label>
-                    <div id="modalColorPalette" class="color-palette-selection"></div>
-                </div>
-            </div>
-
-            <div class="modal-footer">
-                <button id="deleteEventBtn" class="btn btn-danger hidden">削除</button>
-                <div style="display:flex; gap:8px;">
-                    <button id="cancelEventBtn" class="btn btn-secondary">キャンセル</button>
-                    <button id="saveEventBtn" class="btn btn-primary">保存</button>
-                </div>
+        <div class="modal-footer">
+            <button id="deleteEventBtn" class="btn btn-danger hidden">削除</button>
+            <div style="display:flex; gap:8px;">
+                <button id="cancelEventBtn" class="btn btn-secondary">キャンセル</button>
+                <button id="saveEventBtn" class="btn btn-primary">保存</button>
             </div>
         </div>
     </div>
-
-    <div id="monthPickerModal" class="modal-backdrop hidden">
-        <div class="modal-card">
-            <div class="modal-header">
-                <h3>年月を選択</h3>
-                <button id="closePickerBtn" class="btn btn-icon">✕</button>
-            </div>
-            <div class="modal-body">
-                <div class="picker-year-row">
-                    <button id="pickerPrevYearBtn" class="btn btn-icon">◀</button>
-                    <span id="pickerYearDisplay" class="year-display">2026年</span>
-                    <button id="pickerNextYearBtn" class="btn btn-icon">▶</button>
-                </div>
-                <div id="monthGrid" class="month-grid"></div>
+</div>
+<div id="shareGroupModal" class="modal-backdrop hidden">
+    <div class="modal-card">
+        <div class="modal-header">
+            <h3>👥 共有するグループを選択</h3>
+            <button id="closeShareModalBtn" class="btn btn-icon">✕</button>
+        </div>
+        <div class="modal-body">
+            <p style="font-size: 0.8rem; color: #64748b;">
+                選択したグループにいるメンバー全員に予定が共有され、通知が送信されます。（複数選択可）
+            </p>
+            <div id="shareGroupListContainer" class="share-group-list-container">
+                <!-- JavaScriptでグループ一覧を動的生成 -->
             </div>
         </div>
-    </div>
-
-    <div id="addColorModal" class="modal-backdrop hidden">
-        <div class="modal-card">
-            <div class="modal-header">
-                <h3>新しい色を追加</h3>
-                <button id="closeAddColorModalBtn" class="btn btn-icon">✕</button>
-            </div>
-            <div class="modal-body">
-                <div class="form-group">
-                    <label>カラーを選択</label>
-                    <input type="color" id="newColorPicker" value="#3b82f6" style="width:100%; height:40px; border:none; cursor:pointer;">
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button id="addColorBtn" class="btn btn-primary" style="width:100%;">追加する</button>
-            </div>
+        <div class="modal-footer">
+            <button id="cancelShareBtn" class="btn btn-secondary">キャンセル</button>
+            <button id="confirmShareBtn" class="btn btn-primary">共有する</button>
         </div>
     </div>
+</div>
 
-    <div id="tutorialModal" class="modal-backdrop hidden">
-        <div class="modal-card">
-            <div class="modal-header">
-                <h3>Schola Planner へようこそ！</h3>
-                <button id="closeTutorialBtn" class="btn btn-icon">✕</button>
+<div id="monthPickerModal" class="modal-backdrop hidden">
+    <div class="modal-card">
+        <div class="modal-header">
+            <h3>年月を選択</h3>
+            <button id="closePickerBtn" class="btn btn-icon">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="picker-year-row">
+                <button id="pickerPrevYearBtn" class="btn btn-icon">◀</button>
+                <span id="pickerYearDisplay" class="year-display">2026年</span>
+                <button id="pickerNextYearBtn" class="btn btn-icon">▶</button>
             </div>
-            <div class="modal-body">
-                <div id="tutorialStep1" class="tutorial-step">
-                    <h4>📅 1. 日/週 タイムライン表示</h4>
-                    <p>直感的なタイムラインで1日や1週間の予定をひと目で把握。予定をドラッグや伸縮して時間を簡単に変更できます！</p>
-                </div>
-                <div id="tutorialStep2" class="tutorial-step hidden">
-                    <h4>📆 2. 月間カレンダー & スワイプ</h4>
-                    <p>カレンダーエリアを左右にスワイプして月を素早く切り替え。日付をタップするとその日のタイムラインへ移動します。</p>
-                </div>
-                <div id="tutorialStep3" class="tutorial-step hidden">
-                    <h4>🤝 3. クラウド同期 & フレンド・グループ</h4>
-                    <p>IDと名前を登録すれば自動でクラウドバックアップ！友達を検索・招待してグループで予定を共有できます。</p>
-                </div>
-                <div id="tutorialStep4" class="tutorial-step hidden">
-                    <h4>🎨 4. テーマ & カラーカスタマイズ</h4>
-                    <p>お好みの背景画像やユーザーアイコンを設定し、使いやすく自由度の高い自分だけのアプリを作りましょう。</p>
-                </div>
-                <div class="step-dots" style="text-align:center; margin-top:12px;">
-                    <span class="dot active"></span>
-                    <span class="dot"></span>
-                    <span class="dot"></span>
-                    <span class="dot"></span>
-                </div>
-            </div>
-            <div class="modal-footer" style="justify-content:space-between;">
-                <button id="prevStepBtn" class="btn btn-secondary hidden">前へ</button>
-                <button id="nextStepBtn" class="btn btn-primary">次へ</button>
-                <button id="finishTutorialBtn" class="btn btn-primary hidden">始める！</button>
-            </div>
+            <div id="monthGrid" class="month-grid"></div>
         </div>
     </div>
+</div>
 
-    <div id="toastNotification" class="toast hidden">
-        <span id="toastMessage">通知メッセージ</span>
-        <button id="toastUndoBtn" class="btn btn-small btn-secondary hidden">元に戻す</button>
+<div id="addColorModal" class="modal-backdrop hidden">
+    <div class="modal-card">
+        <div class="modal-header">
+            <h3>新しい色を追加</h3>
+            <button id="closeAddColorModalBtn" class="btn btn-icon">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label>カラーを選択</label>
+                <input type="color" id="newColorPicker" value="#3b82f6" style="width:100%; height:40px; border:none; cursor:pointer;">
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button id="addColorBtn" class="btn btn-primary" style="width:100%;">追加する</button>
+        </div>
     </div>
+</div>
 
-    <script src="app.js"></script>
+<div id="tutorialModal" class="modal-backdrop hidden">
+    <div class="modal-card">
+        <div class="modal-header">
+            <h3>Schola Planner へようこそ！</h3>
+            <button id="closeTutorialBtn" class="btn btn-icon">✕</button>
+        </div>
+        <div class="modal-body">
+            <div id="tutorialStep1" class="tutorial-step">
+                <h4>📅 1. 日/週 タイムライン表示</h4>
+                <p>直感的なタイムラインで1日や1週間の予定をひと目で把握。予定をドラッグや伸縮して時間を簡単に変更できます！</p>
+            </div>
+            <div id="tutorialStep2" class="tutorial-step hidden">
+                <h4>📆 2. 月間カレンダー & スワイプ</h4>
+                <p>カレンダーエリアを左右にスワイプして月を素早く切り替え。日付をタップするとその日のタイムラインへ移動します。</p>
+            </div>
+            <div id="tutorialStep3" class="tutorial-step hidden">
+                <h4>🤝 3. クラウド同期 & フレンド・グループ</h4>
+                <p>IDと名前を登録すれば自動でクラウドバックアップ！友達を検索・招待してグループで予定を共有できます。</p>
+            </div>
+            <div id="tutorialStep4" class="tutorial-step hidden">
+                <h4>🎨 4. テーマ & カラーカスタマイズ</h4>
+                <p>お好みの背景画像やユーザーアイコンを設定し、使いやすく自由度の高い自分だけのアプリを作りましょう。</p>
+            </div>
+            <div class="step-dots" style="text-align:center; margin-top:12px;">
+                <span class="dot active"></span>
+                <span class="dot"></span>
+                <span class="dot"></span>
+                <span class="dot"></span>
+            </div>
+        </div>
+        <div class="modal-footer" style="justify-content:space-between;">
+            <button id="prevStepBtn" class="btn btn-secondary hidden">前へ</button>
+            <button id="nextStepBtn" class="btn btn-primary">次へ</button>
+            <button id="finishTutorialBtn" class="btn btn-primary hidden">始める！</button>
+        </div>
+    </div>
+</div>
+
+<div id="toastNotification" class="toast hidden">
+    <span id="toastMessage">通知メッセージ</span>
+    <button id="toastUndoBtn" class="btn btn-small btn-secondary hidden">元に戻す</button>
+</div>
+
+<script src="app.js"></script>
 </body>
 </html>
