@@ -1737,23 +1737,55 @@ function renderGroupDetailView(container) {
                 `;
 
                 const shareBtn = item.querySelector('.share-this-evt-btn');
-                if (shareBtn) {
-                    shareBtn.onclick = () => {
-                        if (!evt.sharedGroupIds) evt.sharedGroupIds = [];
-                        if (!evt.sharedGroupIds.includes(grp.id)) {
-                            evt.sharedGroupIds.push(grp.id);
-                        }
-                        evt.ownerId = state.profile.userId;
-                        evt.ownerName = state.profile.userName;
+if (shareBtn) {
+    if (!evt.sharedGroupIds) evt.sharedGroupIds = [];
+    const isShared = evt.sharedGroupIds.includes(grp.id);
 
-                        saveData();
-                        syncSharedEventToCloud(evt);
-                        notifyGroupMembersForEvent([grp.id], evt);
-                        showToast(`「${evt.title}」をグループに共有しました`);
-                        renderGroupSection();
-                        renderAllViews();
-                    };
-                }
+    // 1. 共有状態に応じてボタンの見た目・テキストを変更
+    if (isShared) {
+        shareBtn.textContent = '🔓 共有解除';
+        shareBtn.style.backgroundColor = '#ef4444'; // 赤色
+        shareBtn.style.color = '#ffffff';
+    } else {
+        shareBtn.textContent = '🔗 共有';
+        shareBtn.style.backgroundColor = ''; 
+        shareBtn.style.color = '';
+    }
+
+    // 2. クリック時の処理（共有 / 解除の分岐）
+    shareBtn.onclick = () => {
+        if (!evt.sharedGroupIds) evt.sharedGroupIds = [];
+        const currentlyShared = evt.sharedGroupIds.includes(grp.id);
+
+        if (currentlyShared) {
+            // 【共有解除の処理】
+            if (!confirm(`「${evt.title}」のグループ共有を解除しますか？`)) return;
+
+            // ローカル配列から該当グループIDを削除
+            evt.sharedGroupIds = evt.sharedGroupIds.filter(id => id !== grp.id);
+
+            // Firebaseの共有ノードからデータを削除
+            if (isFirebaseReady) {
+                firebase.database().ref(`groupEvents/${grp.id}/${evt.id}`).remove();
+            }
+
+            showToast(`「${evt.title}」の共有を解除しました`);
+        } else {
+            // 【新規共有の処理】
+            evt.sharedGroupIds.push(grp.id);
+            evt.ownerId = state.profile.userId;
+            evt.ownerName = state.profile.userName;
+
+            syncSharedEventToCloud(evt);
+            notifyGroupMembersForEvent([grp.id], evt);
+            showToast(`「${evt.title}」をグループに共有しました`);
+        }
+
+        saveData();
+        renderGroupSection();
+        renderAllViews();
+    };
+}
 
                 contentArea.appendChild(item);
             });
@@ -2805,4 +2837,26 @@ function deleteEventFromModal() {
     saveData();
     closeEventModal();
     renderAllViews();
+}
+function unshareEventFromModal(eventId) {
+    const targetEvt = state.events.find(e => e.id === eventId);
+    if (!targetEvt) return;
+
+    if (!confirm('この予定の共有を解除しますか？（他のグループメンバーの画面からも削除されます）')) return;
+
+    // Firebase上のグループ共有データを削除
+    if (isFirebaseReady && targetEvt.sharedGroupIds && targetEvt.sharedGroupIds.length > 0) {
+        const db = firebase.database();
+        targetEvt.sharedGroupIds.forEach(gId => {
+            db.ref(`groupEvents/${gId}/${targetEvt.id}`).remove();
+        });
+    }
+
+    // ローカルデータの共有情報を削除
+    targetEvt.sharedGroupIds = [];
+
+    saveData();
+    closeEventModal();
+    renderAllViews();
+    showToast('🔓 予定の共有を解除しました');
 }
