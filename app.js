@@ -126,6 +126,7 @@ function initFirebase() {
     try {
         if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
         isFirebaseReady = true;
+        syncAllMyGroups(); // ← ここで呼ぶ
     } catch (e) {
         console.warn('Firebase connection standby');
     }
@@ -598,7 +599,7 @@ function renderDayTimeline() {
 
     todayEvents.forEach(evt => {
         const card = document.createElement('div');
-        card.className = `event-card ${evt.isImportant ? 'important-event' : ''}`;
+       card.className = `event-card ${evt.isImportant ? 'important-event' : ''} ${evt.isLocked ? 'is-locked' : ''}`;
         
         card.style.overflow = 'hidden';
         card.style.textOverflow = 'ellipsis';
@@ -647,6 +648,9 @@ function renderDayTimeline() {
 function setupEventDragAndResize(card, evt) {
     if (evt.ownerId && state.profile.userId && evt.ownerId !== state.profile.userId) {
         return;
+    }
+        if (evt.isLocked) {
+        return; // 固定中はドラッグ・リサイズを禁止
     }
 
     let startY, startTop, startHeight;
@@ -1615,6 +1619,20 @@ function deleteEventFromModal() {
     closeEventModal();
     renderAllViews();
     showToast('🗑️ 予定を削除しました');
+}
+function unshareGroupEvent(eventId, groupId) {
+    const evt = state.events.find(e => e.id === eventId);
+    if (!evt) return;
+    if (!confirm(`「${evt.title}」の共有をこのグループで解除しますか？`)) return;
+
+    if (isFirebaseReady) {
+        firebase.database().ref(`groupEvents/${groupId}/${eventId}`).remove();
+    }
+
+    evt.sharedGroupIds = getSharedGroupIds(evt).filter(id => id !== groupId);
+    saveData();
+    renderAllViews();
+    showToast('🔓 共有を解除しました');
 }
 // グループ共有予定のリアルタイム同期（削除・解除の同期対応）
 function listenToGroupEvents(groupId) {
@@ -3015,12 +3033,8 @@ function unshareEventFromModal() {
 }
 // 参加中グループ全てのリアルタイム同期を開始する関数
 function syncAllMyGroups() {
-    if (!isFirebaseReady || !state.myGroups || !Array.isArray(state.myGroups)) return;
-    
-    state.myGroups.forEach(group => {
-        if (group && group.id) {
-            listenToGroupEvents(group.id);
-        }
+    if (!isFirebaseReady || !state.groups) return;
+    Object.keys(state.groups).forEach(groupId => {
+        listenToGroupEvents(groupId);
     });
 }
-syncAllMyGroups(); // アプリ起動時に全グループの同期を開始
