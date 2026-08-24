@@ -1621,34 +1621,45 @@ function listenToGroupEvents(groupId) {
     if (!isFirebaseReady || !groupId) return;
     const ref = firebase.database().ref(`groupEvents/${groupId}`);
     
-    // 二重登録防止のため既存リスナー解除（安全策）
+    // リスナーの二重登録を防止
     ref.off();
 
     ref.on('value', snapshot => {
         const cloudEvents = snapshot.val() || {};
-        const cloudEventIds = Object.keys(cloudEvents);
-        const currentUserId = state.profile ? state.profile.userId : null;
+        const cloudEventIds = Object.keys(cloudEvents).map(id => String(id));
+        const currentUserId = state.profile && state.profile.userId ? String(state.profile.userId) : null;
 
-        // 1. クラウド（Firebase）から削除・共有解除された予定をローカル（相手側）から除去
+        console.log(`[Firebase同期] グループ (${groupId}) 受信データ数:`, cloudEventIds.length);
+
+        // 1. クラウドから削除・解除された予定を相手側ローカルから確実に消去
         state.events = state.events.filter(e => {
-            // 自分が作成した本体予定は保持
-            if (currentUserId && e.ownerId === currentUserId) return true;
+            // 自分の作成予定なら保持
+            const isMyOwn = currentUserId && e.ownerId && String(e.ownerId) === currentUserId;
+            if (isMyOwn) return true;
 
-            // 共有グループIDの配列化
+            // 共有グループIDの安全な抽出（型違い吸収）
             const sharedGroups = e.sharedGroupIds 
                 ? (Array.isArray(e.sharedGroupIds) ? e.sharedGroupIds : Object.values(e.sharedGroupIds))
                 : [];
+            
+            // このグループに関連する予定、または共有IDが空の他人発予定か判定
+            const isTargetGroupEvent = sharedGroups.some(gId => String(gId) === String(groupId)) || sharedGroups.length === 0;
 
-            // このグループの予定でない場合は保持
-            if (!sharedGroups.includes(groupId)) return true;
+            if (isTargetGroupEvent) {
+                // クラウド上に存在しない場合は削除（false）
+                const existsInCloud = cloudEventIds.includes(String(e.id));
+                if (!existsInCloud) {
+                    console.log(`[削除実行] 共有解除された予定を消去しました: ${e.title || e.id}`);
+                    return false;
+                }
+            }
 
-            // クラウド上に存在しない場合は削除（falseを返して除去）
-            return cloudEventIds.includes(e.id);
+            return true;
         });
 
-        // 2. クラウドに存在する最新データを反映
+        // 2. クラウドの最新共有予定をローカルへ反映
         Object.values(cloudEvents).forEach(cloudEvt => {
-            const index = state.events.findIndex(e => e.id === cloudEvt.id);
+            const index = state.events.findIndex(e => String(e.id) === String(cloudEvt.id));
             if (index >= 0) {
                 state.events[index] = { ...state.events[index], ...cloudEvt };
             } else {
