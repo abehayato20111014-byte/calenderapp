@@ -112,14 +112,14 @@ function registerInlineServiceWorker() {
             });
         `;
         const blob = new Blob([swCode], { type: 'application/javascript' });
-        const blobUrl = URL.createObjectURL(blob);
-
-        navigator.serviceWorker.register(blobUrl)
-            .then(reg => console.log('Inline Service Worker Registered:', reg.scope))
-            .catch(err => {
-                console.warn('Inline SW Registration failed:', err);
-            });
-    }
+        if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js')
+            .then(reg => console.log('ServiceWorker 登録完了:', reg))
+            .catch(err => console.error('ServiceWorker 登録失敗:', err));
+    });
+}
+}
 }
 
 function initFirebase() {
