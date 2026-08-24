@@ -885,3 +885,21 @@ button {
     border-radius: 4px;
     font-weight: bold;
 }
+/* ==========================================
+   ⭐ 予定の固定（ロック）用スタイル (style.css の末尾に追加)
+   ========================================== */
+.event-card.is-locked {
+    border: 2px dashed rgba(255, 255, 255, 0.8) !important;
+    cursor: default !important;
+}
+
+/* 固定された予定のリサイズハンドルを非表示に */
+.event-card.is-locked .event-card-resize-handle {
+    display: none !important;
+}
+
+/* ロックアイコン表示用 */
+.card-title .lock-icon {
+    margin-right: 4px;
+    font-size: 0.8rem;
+}
