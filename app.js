@@ -1620,48 +1620,34 @@ function deleteEventFromModal() {
 function listenToGroupEvents(groupId) {
     if (!isFirebaseReady || !groupId) return;
     const ref = firebase.database().ref(`groupEvents/${groupId}`);
-    
-    // リスナーの二重登録を防止
-    ref.off();
 
     ref.on('value', snapshot => {
         const cloudEvents = snapshot.val() || {};
-        const cloudEventIds = Object.keys(cloudEvents).map(id => String(id));
-        const currentUserId = state.profile && state.profile.userId ? String(state.profile.userId) : null;
+        const cloudEventIds = Object.keys(cloudEvents);
+        const currentUserId = state.profile ? state.profile.userId : null;
 
-        console.log(`[Firebase同期] グループ (${groupId}) 受信データ数:`, cloudEventIds.length);
-
-        // 1. クラウドから削除・解除された予定を相手側ローカルから確実に消去
+        // 他人の予定で、Firebase上に存在しないものを全削除
         state.events = state.events.filter(e => {
-            // 自分の作成予定なら保持
-            const isMyOwn = currentUserId && e.ownerId && String(e.ownerId) === currentUserId;
-            if (isMyOwn) return true;
+            const isMyEvent = currentUserId && e.ownerId === currentUserId;
+            if (isMyEvent) return true; // 自分の作成予定は保護
 
-            // 共有グループIDの安全な抽出（型違い吸収）
-            const sharedGroups = e.sharedGroupIds 
-                ? (Array.isArray(e.sharedGroupIds) ? e.sharedGroupIds : Object.values(e.sharedGroupIds))
-                : [];
-            
-            // このグループに関連する予定、または共有IDが空の他人発予定か判定
-            const isTargetGroupEvent = sharedGroups.some(gId => String(gId) === String(groupId)) || sharedGroups.length === 0;
+            const sharedGroups = Array.isArray(e.sharedGroupIds) 
+                ? e.sharedGroupIds 
+                : Object.values(e.sharedGroupIds || {});
 
-            if (isTargetGroupEvent) {
-                // クラウド上に存在しない場合は削除（false）
-                const existsInCloud = cloudEventIds.includes(String(e.id));
-                if (!existsInCloud) {
-                    console.log(`[削除実行] 共有解除された予定を消去しました: ${e.title || e.id}`);
-                    return false;
-                }
+            // 該当グループの共有予定で、クラウドから消えていれば削除(false)
+            if (sharedGroups.includes(groupId)) {
+                return cloudEventIds.includes(e.id);
             }
 
             return true;
         });
 
-        // 2. クラウドの最新共有予定をローカルへ反映
+        // クラウドの最新データを反映
         Object.values(cloudEvents).forEach(cloudEvt => {
-            const index = state.events.findIndex(e => String(e.id) === String(cloudEvt.id));
-            if (index >= 0) {
-                state.events[index] = { ...state.events[index], ...cloudEvt };
+            const idx = state.events.findIndex(e => e.id === cloudEvt.id);
+            if (idx >= 0) {
+                state.events[idx] = { ...state.events[idx], ...cloudEvt };
             } else {
                 state.events.push(cloudEvt);
             }
@@ -3001,37 +2987,31 @@ function deleteEventFromModal() {
  * @param {string} eventId - 解除対象の予定ID
  * @param {string|null} targetGroupId - 特定のグループID（指定がない場合は全グループで共有解除）
  */
-function unshareEventFromModal(eventId) {
-    const targetEvt = state.events.find(e => e.id === eventId);
-    if (!targetEvt) return;
+function unshareEventFromModal() {
+    const id = document.getElementById('editEventId')?.value;
+    if (!id) return;
 
-    // 共有グループIDの配列化
-    const sharedGroupIds = targetEvt.sharedGroupIds 
-        ? (Array.isArray(targetEvt.sharedGroupIds) ? targetEvt.sharedGroupIds : Object.values(targetEvt.sharedGroupIds))
-        : [];
+    const evt = state.events.find(e => e.id === id);
+    if (!evt) return;
 
-    if (sharedGroupIds.length === 0) {
-        showToast('⚠️ この予定は共有されていません');
-        return;
-    }
+    const sharedGroups = Array.isArray(evt.sharedGroupIds) 
+        ? evt.sharedGroupIds 
+        : Object.values(evt.sharedGroupIds || {});
 
-    if (!confirm('この予定の共有を解除しますか？（グループの共有一覧から削除されます）')) return;
-
-    // Firebase クラウドDBから削除
-    if (isFirebaseReady) {
+    // Firebase上のデータを確実に物理削除
+    if (isFirebaseReady && sharedGroups.length > 0) {
         const db = firebase.database();
-        sharedGroupIds.forEach(gId => {
-            db.ref(`groupEvents/${gId}/${targetEvt.id}`).remove();
+        sharedGroups.forEach(gId => {
+            db.ref(`groupEvents/${gId}/${evt.id}`).remove();
         });
     }
 
-    // ローカルデータの共有状態をリセット
-    targetEvt.sharedGroupIds = [];
-
+    // ローカル予定の共有状態をクリア
+    evt.sharedGroupIds = [];
     saveData();
     closeEventModal();
     renderAllViews();
-    showToast('🔓 予定の共有を解除しました');
+    showToast('🔓 共有を解除しました');
 }
 // 参加中グループ全てのリアルタイム同期を開始する関数
 function syncAllMyGroups() {
