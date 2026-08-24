@@ -302,6 +302,9 @@
                     <label class="checkbox-label">
                         <input type="checkbox" id="eventAllDayInput"> 終日
                     </label>
+                    <label class="checkbox-label">
+        <input type="checkbox" id="eventLockedInput"> 🔒 固定（時間変更不可）
+    </label>
                 </div>
 
                 <div class="repeat-section-card">
@@ -360,13 +363,16 @@
                 </div>
             </div>
 
-            <div class="modal-footer">
-                <button id="deleteEventBtn" class="btn btn-danger hidden">削除</button>
-                <div style="display:flex; gap:8px;">
-                    <button id="cancelEventBtn" class="btn btn-secondary">キャンセル</button>
-                    <button id="saveEventBtn" class="btn btn-primary">保存</button>
-                </div>
-            </div>
+<div class="modal-footer">
+    <!-- モーダルのボタンエリア内に追加 -->
+<button type="button" id="deleteEventBtn" class="btn btn-danger hidden">削除</button>
+    <button type="button" id="unshareEventBtn" class="btn btn-warning hidden">🔓 共有解除</button>
+    <div style="display:flex; gap:8px;">
+        <button type="button" id="openShareModalBtn" class="btn btn-secondary">👥 共有</button>
+        <button id="cancelEventBtn" class="btn btn-secondary">キャンセル</button>
+        <button id="saveEventBtn" class="btn btn-primary">保存</button>
+    </div>
+</div>
         </div>
     </div>
     <div id="shareGroupModal" class="modal-backdrop hidden">
@@ -383,10 +389,10 @@
                 <!-- JavaScriptでグループ一覧を動的生成 -->
             </div>
         </div>
-        <div class="modal-footer">
-            <button id="cancelShareBtn" class="btn btn-secondary">キャンセル</button>
-            <button id="confirmShareBtn" class="btn btn-primary">共有する</button>
-        </div>
+<div class="modal-footer">
+    <button id="cancelShareBtn" class="btn btn-secondary">キャンセル</button>
+    <button id="confirmShareBtn" class="btn btn-primary">共有する</button>
+</div>
     </div>
 </div>
 
