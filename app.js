@@ -2403,24 +2403,24 @@ function initModalEvents() {
             if (editId) unshareEventFromModal(editId);
         });
     }
-    const lockedInput = document.getElementById('eventLockedInput');
+const lockedInput = document.getElementById('eventLockedInput');
 if (lockedInput) {
     lockedInput.addEventListener('change', (e) => {
         const isLocked = e.target.checked;
         const startDEl = document.getElementById('eventStartDateInput');
         const endDEl = document.getElementById('eventEndDateInput');
-        const startTEl = document.getElementById('eventStartInput');
-        const endTEl = document.getElementById('eventEndInput');
         const allDayEl = document.getElementById('eventAllDayInput');
+        const repeatEl = document.getElementById('eventRepeatInput');
 
         if (startDEl) startDEl.disabled = isLocked;
         if (endDEl) endDEl.disabled = isLocked;
-        if (startTEl) startTEl.disabled = isLocked;
-        if (endTEl) endTEl.disabled = isLocked;
         if (allDayEl) allDayEl.disabled = isLocked;
+        if (repeatEl) repeatEl.disabled = isLocked;
+
+        toggleTimeInputsForMode(allDayEl ? allDayEl.checked : false);
     });
 }
-}
+};
 
 function addNotificationToModalList() {
     const valInput = document.getElementById('notificationValueInput');
@@ -2535,11 +2535,15 @@ function applyFavoriteTemplate(favId) {
 function toggleTimeInputsForMode(isAllDay) {
     const startInput = document.getElementById('eventStartInput');
     const endInput = document.getElementById('eventEndInput');
+    const lockedInput = document.getElementById('eventLockedInput');
+    const isLocked = lockedInput ? lockedInput.checked : false;
+
     if (startInput && endInput) {
-        startInput.disabled = isAllDay;
-        endInput.disabled = isAllDay;
-        startInput.style.opacity = isAllDay ? '0.4' : '1';
-        endInput.style.opacity = isAllDay ? '0.4' : '1';
+        const disableTime = isLocked || isAllDay;
+        startInput.disabled = disableTime;
+        endInput.disabled = disableTime;
+        startInput.style.opacity = disableTime ? '0.4' : '1';
+        endInput.style.opacity = disableTime ? '0.4' : '1';
     }
 }
 
@@ -2572,18 +2576,6 @@ function openEventModal(evt = null) {
     const modal = document.getElementById('eventModal');
     if (!modal) return;
 
-    const modalFooter = modal.querySelector('.modal-footer') || modal.querySelector('.form-actions');
-    const saveBtn = document.getElementById('saveEventBtn');
-    if (modalFooter) {
-        modalFooter.style.justifyContent = 'flex-start';
-        modalFooter.style.display = 'flex';
-        modalFooter.style.gap = '8px';
-    }
-    if (saveBtn) {
-        saveBtn.style.marginRight = '0';
-        saveBtn.style.marginLeft = '0';
-    }
-    
     clearModalErrors();
     modal.classList.remove('hidden');
 
@@ -2600,50 +2592,6 @@ function openEventModal(evt = null) {
     document.querySelectorAll('.weekday-selector input[type="checkbox"]').forEach(cb => cb.checked = false);
 
     const isOtherOwner = evt && evt.ownerId && state.profile.userId && evt.ownerId !== state.profile.userId;
-    const isLocked = !!(evt && evt.isLocked); // 固定されているか判定
-
-    const sharedGroupIds = getSharedGroupIds(evt);
-    const isShared = sharedGroupIds.length > 0;
-
-    const setModalDisabled = (disabled) => {
-        const titleEl = document.getElementById('eventTitleInput');
-        const startDEl = document.getElementById('eventStartDateInput');
-        const endDEl = document.getElementById('eventEndDateInput');
-        const startTEl = document.getElementById('eventStartInput');
-        const endTEl = document.getElementById('eventEndInput');
-        const impEl = document.getElementById('eventImportantInput');
-
-        // 他人の予定（disabled）または固定中の場合（isLocked）は日時をロック
-        const lockDateTime = disabled || isLocked;
-
-        if (titleEl) titleEl.disabled = disabled;
-        if (startDEl) startDEl.disabled = lockDateTime;
-        if (endDEl) endDEl.disabled = lockDateTime;
-        if (startTEl) startTEl.disabled = lockDateTime;
-        if (endTEl) endTEl.disabled = lockDateTime;
-        if (impEl) impEl.disabled = disabled;
-        if (allDayCheckbox) allDayCheckbox.disabled = lockDateTime;
-        if (repeatCheckbox) repeatCheckbox.disabled = lockDateTime;
-        if (lockedCheckbox) lockedCheckbox.disabled = disabled;
-
-        const delBtn = document.getElementById('deleteEventBtn');
-        const shareBtn = document.getElementById('openShareModalBtn');
-        const favBtn = document.getElementById('saveFavoriteBtn');
-        const noticeEl = document.getElementById('sharedEventNotice');
-        const unshareBtn = document.getElementById('unshareEventBtn');
-
-        if (saveBtn) saveBtn.classList.toggle('hidden', disabled);
-        if (delBtn) delBtn.classList.toggle('hidden', disabled || !evt);
-        if (shareBtn) shareBtn.classList.toggle('hidden', disabled);
-        if (favBtn) favBtn.classList.toggle('hidden', disabled);
-        if (noticeEl) noticeEl.classList.toggle('hidden', !disabled);
-        
-        if (unshareBtn) {
-            unshareBtn.classList.toggle('hidden', disabled || !isShared);
-        }
-    };
-
-    setModalDisabled(isOtherOwner);
 
     if (evt) {
         const editIdEl = document.getElementById('editEventId');
@@ -2695,10 +2643,45 @@ function openEventModal(evt = null) {
         state.selectedColor = state.customColors[0];
     }
 
+    const isLocked = lockedCheckbox ? lockedCheckbox.checked : false;
+
+    const setModalDisabled = (disabled) => {
+        const titleEl = document.getElementById('eventTitleInput');
+        const startDEl = document.getElementById('eventStartDateInput');
+        const endDEl = document.getElementById('eventEndDateInput');
+        const impEl = document.getElementById('eventImportantInput');
+
+        const lockDateTime = disabled || isLocked;
+
+        if (titleEl) titleEl.disabled = disabled;
+        if (startDEl) startDEl.disabled = lockDateTime;
+        if (endDEl) endDEl.disabled = lockDateTime;
+        if (impEl) impEl.disabled = disabled;
+        if (allDayCheckbox) allDayCheckbox.disabled = lockDateTime;
+        if (repeatCheckbox) repeatCheckbox.disabled = lockDateTime;
+        if (lockedCheckbox) lockedCheckbox.disabled = disabled;
+
+        const saveBtn = document.getElementById('saveEventBtn');
+        const delBtn = document.getElementById('deleteEventBtn');
+        const shareBtn = document.getElementById('openShareModalBtn');
+        const favBtn = document.getElementById('saveFavoriteBtn');
+        const noticeEl = document.getElementById('sharedEventNotice');
+        const unshareBtn = document.getElementById('unshareEventBtn');
+
+        const sharedGroupIds = getSharedGroupIds(evt);
+        const isShared = sharedGroupIds.length > 0;
+
+        if (saveBtn) saveBtn.classList.toggle('hidden', disabled);
+        if (delBtn) delBtn.classList.toggle('hidden', disabled || !evt);
+        if (shareBtn) shareBtn.classList.toggle('hidden', disabled);
+        if (favBtn) favBtn.classList.toggle('hidden', disabled);
+        if (noticeEl) noticeEl.classList.toggle('hidden', !disabled);
+        if (unshareBtn) unshareBtn.classList.toggle('hidden', disabled || !isShared);
+    };
+
+    setModalDisabled(isOtherOwner);
     renderNotificationListInModal();
-    if (!isOtherOwner) {
-        toggleTimeInputsForMode(allDayCheckbox ? allDayCheckbox.checked : false);
-    }
+    toggleTimeInputsForMode(allDayCheckbox ? allDayCheckbox.checked : false);
     renderModalColorPalette(state.selectedColor);
 }
 
