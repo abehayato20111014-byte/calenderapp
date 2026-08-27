@@ -1226,75 +1226,75 @@ function listenToFirebaseRealtime() {
     });
 
     db.ref('userGroups/' + myId).on('value', (snapshot) => {
-        const val = snapshot.val() || {};
-        state.groups = {};
-        const groupIds = Object.keys(val);
+    const val = snapshot.val() || {};
+    state.groups = {};
+    const groupIds = Object.keys(val);
 
-        if (groupIds.length === 0) {
-            renderGroupSection();
-            return;
-        }
+    if (groupIds.length === 0) {
+        renderGroupSection();
+        return;
+    }
 
-        groupIds.forEach(gId => {
-            db.ref('groups/' + gId).on('value', (gSnap) => {
-                if (gSnap.exists()) {
-                    state.groups[gId] = gSnap.val();
-                    renderGroupSection();
-                }
-            });
+    groupIds.forEach(gId => {
+        db.ref('groups/' + gId).on('value', (gSnap) => {
+            if (gSnap.exists()) {
+                state.groups[gId] = gSnap.val();
+                renderGroupSection();
+            }
+        });
 
-            db.ref('groupEvents/' + gId).on('value', (evtSnap) => {
-                const cloudEvents = evtSnap.val() || {};
-                let hasChanges = false;
+        // 共有予定のリアルタイム同期 (追加・更新・自動削除対応)
+        db.ref('groupEvents/' + gId).on('value', (evtSnap) => {
+            const cloudEvents = evtSnap.val() || {};
+            const cloudEventIds = Object.keys(cloudEvents);
+            let hasChanges = false;
 
-                Object.keys(cloudEvents).forEach(evtId => {
-                    const cloudEvt = cloudEvents[evtId];
-                    if (cloudEvt.ownerId !== myId) {
-                        const localIdx = state.events.findIndex(e => e.id === evtId);
-                        if (localIdx >= 0) {
-                            state.events[localIdx] = {
-                                ...state.events[localIdx],
-                                title: cloudEvt.title,
-                                isImportant: cloudEvt.isImportant,
-                                isAllDay: cloudEvt.isAllDay,
-                                startDate: cloudEvt.startDate,
-                                endDate: cloudEvt.endDate,
-                                startTime: cloudEvt.startTime,
-                                endTime: cloudEvt.endTime,
-                                color: cloudEvt.color,
-                                ownerId: cloudEvt.ownerId,
-                                ownerName: cloudEvt.ownerName,
-                                sharedGroupIds: cloudEvt.sharedGroupIds
-                            };
-                            hasChanges = true;
-                        } else {
-                            state.events.push({
-                                id: cloudEvt.id,
-                                title: cloudEvt.title,
-                                isImportant: cloudEvt.isImportant,
-                                isAllDay: cloudEvt.isAllDay,
-                                startDate: cloudEvt.startDate,
-                                endDate: cloudEvt.endDate,
-                                startTime: cloudEvt.startTime,
-                                endTime: cloudEvt.endTime,
-                                color: cloudEvt.color,
-                                ownerId: cloudEvt.ownerId,
-                                ownerName: cloudEvt.ownerName,
-                                sharedGroupIds: cloudEvt.sharedGroupIds,
-                                completed: false
-                            });
-                            hasChanges = true;
-                        }
+            // ① クラウド側で削除・共有解除された予定（他人が所有者）を自分のローカルから自動削除
+            const initialCount = state.events.length;
+            state.events = state.events.filter(e => {
+                // 自分が作成した予定は自分のカレンダーに保持
+                if (e.ownerId && e.ownerId !== myId) {
+                    const sharedGroups = getSharedGroupIds(e);
+                    // このグループに共有されていたがクラウドから消えている場合はローカルから削除
+                    if (sharedGroups.includes(gId) && !cloudEventIds.includes(e.id)) {
+                        return false;
                     }
-                });
+                }
+                return true;
+            });
 
-                if (hasChanges) {
-                    saveData();
-                    renderAllViews();
+            if (state.events.length !== initialCount) {
+                hasChanges = true;
+            }
+
+            // ② クラウドの最新予定を追加・更新
+            cloudEventIds.forEach(evtId => {
+                const cloudEvt = cloudEvents[evtId];
+                if (cloudEvt.ownerId !== myId) {
+                    const localIdx = state.events.findIndex(e => e.id === evtId);
+                    if (localIdx >= 0) {
+                        state.events[localIdx] = {
+                            ...state.events[localIdx],
+                            ...cloudEvt
+                        };
+                        hasChanges = true;
+                    } else {
+                        state.events.push({
+                            ...cloudEvt,
+                            completed: false
+                        });
+                        hasChanges = true;
+                    }
                 }
             });
+
+            if (hasChanges) {
+                saveData();
+                renderAllViews();
+            }
         });
     });
+});
 
     db.ref('userNotifications/' + myId).on('child_added', (snapshot) => {
         const notif = snapshot.val();
@@ -1625,11 +1625,20 @@ function unshareGroupEvent(eventId, groupId) {
     if (!evt) return;
     if (!confirm(`「${evt.title}」の共有をこのグループで解除しますか？`)) return;
 
+    // Firebase上の共有データを削除（他メンバー側の同期イベントが自動発火）
     if (isFirebaseReady) {
         firebase.database().ref(`groupEvents/${groupId}/${eventId}`).remove();
     }
 
-    evt.sharedGroupIds = getSharedGroupIds(evt).filter(id => id !== groupId);
+    // 自分の共有グループIDリストを更新
+    const remainingGroups = getSharedGroupIds(evt).filter(id => id !== groupId);
+    evt.sharedGroupIds = remainingGroups;
+
+    // 他人が所有者の共有予定で、自分がどの共有グループにも属さなくなった場合は削除
+    if (evt.ownerId && evt.ownerId !== state.profile.userId && remainingGroups.length === 0) {
+        state.events = state.events.filter(e => e.id !== eventId);
+    }
+
     saveData();
     renderAllViews();
     showToast('🔓 共有を解除しました');
@@ -2387,40 +2396,33 @@ function initModalEvents() {
             document.getElementById('addColorModal').classList.add('hidden');
         });
     }
-    // 共有解除ボタンのイベント登録
-    const unshareEventBtn = document.getElementById('unshareEventBtn');
-    if (unshareEventBtn) {
-        unshareEventBtn.addEventListener('click', () => {
-            const editId = document.getElementById('editEventId')?.value;
-            if (editId) unshareEventFromModal(editId);
-        });
-    }
-    // 共有解除ボタンのクリックイベント
+   // 共有解除ボタンのイベント登録
     const unshareBtn = document.getElementById('unshareEventBtn');
     if (unshareBtn) {
         unshareBtn.addEventListener('click', () => {
             const editId = document.getElementById('editEventId')?.value;
-            if (editId) unshareEventFromModal(editId);
+            if (editId) unshareAllGroupEvents(editId);
         });
     }
-const lockedInput = document.getElementById('eventLockedInput');
-if (lockedInput) {
-    lockedInput.addEventListener('change', (e) => {
-        const isLocked = e.target.checked;
-        const startDEl = document.getElementById('eventStartDateInput');
-        const endDEl = document.getElementById('eventEndDateInput');
-        const allDayEl = document.getElementById('eventAllDayInput');
-        const repeatEl = document.getElementById('eventRepeatInput');
 
-        if (startDEl) startDEl.disabled = isLocked;
-        if (endDEl) endDEl.disabled = isLocked;
-        if (allDayEl) allDayEl.disabled = isLocked;
-        if (repeatEl) repeatEl.disabled = isLocked;
+    const lockedInput = document.getElementById('eventLockedInput');
+    if (lockedInput) {
+        lockedInput.addEventListener('change', (e) => {
+            const isLocked = e.target.checked;
+            const startDEl = document.getElementById('eventStartDateInput');
+            const endDEl = document.getElementById('eventEndDateInput');
+            const allDayEl = document.getElementById('eventAllDayInput');
+            const repeatEl = document.getElementById('eventRepeatInput');
 
-        toggleTimeInputsForMode(allDayEl ? allDayEl.checked : false);
-    });
+            if (startDEl) startDEl.disabled = isLocked;
+            if (endDEl) endDEl.disabled = isLocked;
+            if (allDayEl) allDayEl.disabled = isLocked;
+            if (repeatEl) repeatEl.disabled = isLocked;
+
+            toggleTimeInputsForMode(allDayEl ? allDayEl.checked : false);
+        });
+    }
 }
-};
 
 function addNotificationToModalList() {
     const valInput = document.getElementById('notificationValueInput');
@@ -3020,4 +3022,34 @@ function syncAllMyGroups() {
     Object.keys(state.groups).forEach(groupId => {
         listenToGroupEvents(groupId);
     });
+}
+function unshareAllGroupEvents(eventId) {
+    const evt = state.events.find(e => e.id === eventId);
+    if (!evt) return;
+
+    const sharedGroups = getSharedGroupIds(evt);
+    if (sharedGroups.length === 0) return;
+
+    if (!confirm(`「${evt.title}」のすべてのグループ共有を解除しますか？`)) return;
+
+    // Firebase クラウド上の共有データを削除
+    if (isFirebaseReady) {
+        const db = firebase.database();
+        sharedGroups.forEach(gId => {
+            db.ref(`groupEvents/${gId}/${evt.id}`).remove();
+        });
+    }
+
+    // 自分のローカルの共有IDをクリア
+    evt.sharedGroupIds = [];
+
+    // 他人が所有者の共有予定であればローカルカレンダーからも削除
+    if (evt.ownerId && evt.ownerId !== state.profile.userId) {
+        state.events = state.events.filter(e => e.id !== eventId);
+    }
+
+    saveData();
+    closeEventModal();
+    renderAllViews();
+    showToast('🔓 共有を解除しました');
 }
