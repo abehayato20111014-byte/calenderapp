@@ -460,7 +460,7 @@ button {
 @media (max-width: 768px) {
     .calendar-day-cell {
         min-height: 60px;
-        height: 60px;
+        height: 100px;
         padding: 2px;
     }
 
