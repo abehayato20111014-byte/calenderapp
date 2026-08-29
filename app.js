@@ -2136,8 +2136,7 @@ function openEventModalForFavorite(fav = null) {
     // 予定入力モーダルをお気に入りデータで初期化して開く
     openEventModal(fav ? { ...fav, startDate: dayjs().format('YYYY-MM-DD'), endDate: dayjs().format('YYYY-MM-DD') } : null);
 
-    const saveBtn = document.getElementById('saveEventBtn');
-    if (!saveBtn) return;
+
 
     // 保存ボタンの動作をお気に入り保存用に変更
     saveBtn.onclick = () => {
@@ -2174,8 +2173,6 @@ function openEventModalForFavorite(fav = null) {
         renderFavoriteListDetail();
         showToast(fav ? 'お気に入りを更新しました' : 'お気に入りに登録しました');
 
-        // 保存完了後にボタンの動作を通常の予定保存に戻す
-        saveBtn.onclick = saveEventFromModal;
     };
 }
 function renderSettingsColorPalette() {
@@ -2326,8 +2323,7 @@ function initModalEvents() {
     const cancelEventBtn = document.getElementById('cancelEventBtn');
     if (cancelEventBtn) cancelEventBtn.addEventListener('click', closeEventModal);
 
-    const saveEventBtn = document.getElementById('saveEventBtn');
-    if (saveEventBtn) saveEventBtn.addEventListener('click', saveEventFromModal);
+
 
     const deleteEventBtn = document.getElementById('deleteEventBtn');
     if (deleteEventBtn) deleteEventBtn.addEventListener('click', deleteEventFromModal);
@@ -2692,9 +2688,6 @@ function closeEventModal() {
     if (modal) modal.classList.add('hidden');
     state.currentEditingEvent = null;
 
-    // 保存ボタンのイベントを通常保存に戻す（この1行を追加）
-    const saveBtn = document.getElementById('saveEventBtn');
-    if (saveBtn) saveBtn.onclick = saveEventFromModal;
 }
 
 function openShareGroupModal() {
@@ -3140,3 +3133,9 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     }
 })();
+// 重複をすべて削除し、これだけにまとめます
+const saveEventBtn = document.getElementById('saveEventBtn') || document.querySelector('.btn-save');
+
+if (saveEventBtn) {
+    saveEventBtn.addEventListener('click', saveEventFromModal);
+}
