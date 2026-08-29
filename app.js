@@ -3053,32 +3053,56 @@ function unshareAllGroupEvents(eventId) {
     renderAllViews();
     showToast('🔓 共有を解除しました');
 }
-// ユーザーアイコン削除（解除）ボタンのイベント登録
-const removeIconBtn = document.getElementById('removeUserIconBtn');
-if (removeIconBtn) {
-    removeIconBtn.addEventListener('click', () => {
-        if (!confirm('アイコンを解除して初期画像に戻しますか？')) return;
+// アイコン削除（解除）の共通処理関数
+function handleRemoveUserIcon() {
+    if (!confirm('アイコンを解除して初期状態に戻しますか？')) return;
 
-        // ファイル選択の選択状態をクリア
-        const iconInput = document.getElementById('userIconInput');
-        if (iconInput) {
-            iconInput.value = '';
+    // 1. ファイル入力（<input type="file">）の選択状態をクリア
+    const iconInput = document.getElementById('userIconInput');
+    if (iconInput) {
+        iconInput.value = '';
+    }
+
+    // 2. state.profile 内のアイコン保持プロパティをすべてクリア
+    if (state.profile) {
+        state.profile.icon = null;
+        state.profile.avatar = null;
+        state.profile.avatarUrl = null;
+        state.profile.photoURL = null;
+    }
+
+    // 3. 設定画面内のプレビュー（<img> または <div>）を初期化
+    const iconPreview = document.getElementById('userIconPreview');
+    if (iconPreview) {
+        if (iconPreview.tagName === 'IMG') {
+            iconPreview.src = '';
         }
+        iconPreview.style.backgroundImage = '';
+    }
 
-        // プロフィールデータのアイコン要素を初期化
-        if (state.profile) {
-            state.profile.icon = null; // 設定されているキー名（icon/avatarUrl等）に合わせて変更してください
-        }
-
-        // 画面上のプレビュー画像を初期化（プレビュー要素が存在する場合）
-        const iconPreview = document.getElementById('userIconPreview');
-        if (iconPreview) {
-            iconPreview.src = ''; // デフォルト画像のパス（例: 'images/default-avatar.png'）がある場合は指定
-        }
-
-        // データの保存と全体描画の更新
-        saveData();
-        renderAllViews();
-        showToast('🗑️ アイコンを解除しました');
+    // 4. ヘッダー等のアイコン要素（style.css の .avatar）の背景画像を消去
+    const headerAvatars = document.querySelectorAll('.avatar');
+    headerAvatars.forEach(el => {
+        el.style.backgroundImage = '';
     });
+
+    // 5. データ保存と画面描画の更新
+    saveData();
+
+    if (typeof renderAllViews === 'function') renderAllViews();
+    if (typeof renderProfile === 'function') renderProfile();
+    if (typeof renderHeader === 'function') renderHeader();
+
+    showToast('🗑️ アイコンを解除しました');
 }
+
+// ボタンのイベント登録（DOMロード時・初期化時にアタッチ）
+document.addEventListener('DOMContentLoaded', () => {
+    const removeIconBtn = document.getElementById('removeUserIconBtn');
+    if (removeIconBtn) {
+        removeIconBtn.addEventListener('click', (e) => {
+            e.preventDefault(); // ボタンクリックによるフォーム送信・ページ再読み込みを防止
+            handleRemoveUserIcon();
+        });
+    }
+});
