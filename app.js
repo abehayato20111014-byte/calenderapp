@@ -117,7 +117,7 @@ function registerInlineServiceWorker() {
 }
 function openEventModalForFavorite(eventData) {
   // HTML側にある保存ボタンのIDに合わせて取得
-  const saveBtn = document.getElementById('saveModalBtn'); 
+  const saveBtn = document.getElementById('saveModalBtn');
   if (!saveBtn) {
     console.error('saveModalBtn が見つかりません');
     return;
@@ -3147,4 +3147,212 @@ const saveEventBtn = document.getElementById('saveEventBtn') || document.querySe
 
 if (saveEventBtn) {
     saveEventBtn.addEventListener('click', saveEventFromModal);
+}
+// ==========================================
+// メンバー削除・通知削除・再参加共有復元処理
+// ==========================================
+
+document.addEventListener('DOMContentLoaded', () => {
+    const removeBtn = document.getElementById('menberRemoveBtn');
+    if (removeBtn) {
+        removeBtn.addEventListener('click', handleRemoveMemberClick);
+    }
+});
+
+/**
+ * 「メンバー削除」ボタンが押された時の処理
+ */
+async function handleRemoveMemberClick() {
+    // 現在開いているモーダルや選択状態から groupId と targetUserId を安全に取得
+    const groupId = getActiveGroupId();
+    const targetUserId = getSelectedMemberId();
+
+    if (!groupId) {
+        alert('グループが選択されていないか、グループ情報を取得できませんでした。');
+        return;
+    }
+    if (!targetUserId) {
+        alert('削除対象のメンバーが選択されていません。');
+        return;
+    }
+
+    // 自分のIDを取得（自分の誤削除を防止）
+    const myId = (typeof state !== 'undefined' && state.profile && state.profile.userId)
+        ? state.profile.userId
+        : localStorage.getItem('schola_user_id');
+
+    if (targetUserId === myId) {
+        alert('自分自身をこのボタンから削除することはできません。グループ脱退機能を利用してください。');
+        return;
+    }
+
+    if (!confirm('このメンバーをグループから削除しますか？\n（共有されていた通知およびイベントも削除されます）')) {
+        return;
+    }
+
+    await removeMemberFromGroup(groupId, targetUserId);
+}
+
+/**
+ * メンバーをグループから削除し、関連通知・共有イベントを消去する
+ */
+async function removeMemberFromGroup(groupId, targetUserId) {
+    try {
+        if (typeof firebase === 'undefined' || !firebase.database) {
+            throw new Error('Firebase Database が初期化されていません。');
+        }
+
+        const db = firebase.database();
+        const updates = {};
+
+        // 1. グループのメンバー一覧から削除
+        updates[`groups/${groupId}/members/${targetUserId}`] = null;
+
+        // 2. 削除されたユーザーの参加グループ一覧から削除
+        updates[`users/${targetUserId}/groups/${groupId}`] = null;
+
+        // 3. 削除されたユーザーの個人共有イベント領域から対象グループのイベントを全削除
+        updates[`users/${targetUserId}/sharedEvents/${groupId}`] = null;
+
+        // 4. グループ内の特定イベントから対象ユーザーを個別除外
+        const groupEventsSnap = await db.ref(`groups/${groupId}/events`).once('value');
+        if (groupEventsSnap.exists()) {
+            const events = groupEventsSnap.val();
+            Object.keys(events).forEach(evtId => {
+                updates[`groups/${groupId}/events/${evtId}/sharedUserIds/${targetUserId}`] = null;
+            });
+        }
+
+        // FirebaseRTDBを一括更新（アトミック処理）
+        await db.ref().update(updates);
+
+        // 5. 該当ユーザーに送信済みの該当グループ通知を削除
+        await cleanupUserGroupNotifications(targetUserId, groupId);
+
+        // ローカルステートの更新と再描画（存在する場合）
+        if (typeof state !== 'undefined' && state.events) {
+            // 削除されたグループイベントをローカルから除外
+            state.events = state.events.filter(e => {
+                const groupIds = typeof getSharedGroupIds === 'function' ? getSharedGroupIds(e) : (e.sharedGroupIds || []);
+                return !groupIds.includes(groupId);
+            });
+            if (typeof saveLocalData === 'function') saveLocalData();
+            if (typeof renderCalendar === 'function') renderCalendar();
+        }
+
+        if (typeof showToast === 'function') {
+            showToast('メンバーを削除し、共有通知とイベントを消去しました。');
+        } else {
+            alert('メンバーを削除し、共有通知とイベントを消去しました。');
+        }
+
+        // メンバーリスト表示の更新処理があれば呼び出し
+        if (typeof renderGroupMembers === 'function') renderGroupMembers(groupId);
+        if (typeof updateGroupList === 'function') updateGroupList();
+
+    } catch (error) {
+        console.error('メンバー削除エラー:', error);
+        alert('メンバーの削除に失敗しました: ' + error.message);
+    }
+}
+
+/**
+ * 削除対象ユーザーの通知ノードから指定グループの通知を削除
+ */
+async function cleanupUserGroupNotifications(userId, groupId) {
+    try {
+        const db = firebase.database();
+        const notifRef = db.ref(`users/${userId}/notifications`);
+
+        const snapshot = await notifRef.once('value');
+        if (snapshot.exists()) {
+            const notifs = snapshot.val();
+            const deletePromises = [];
+
+            Object.keys(notifs).forEach(key => {
+                if (notifs[key] && notifs[key].groupId === groupId) {
+                    deletePromises.push(db.ref(`users/${userId}/notifications/${key}`).remove());
+                }
+            });
+
+            await Promise.all(deletePromises);
+        }
+    } catch (err) {
+        console.warn('通知クリーンアップ失敗:', err);
+    }
+}
+
+/**
+ * 一度削除されたメンバーがグループに再参加した時の共有復元処理
+ * （メンバー再招待・受諾時に呼び出します）
+ */
+async function rejoinMemberToGroup(groupId, targetUserId) {
+    try {
+        if (typeof firebase === 'undefined' || !firebase.database) return;
+
+        const db = firebase.database();
+        const updates = {};
+
+        // 1. グループメンバーとして再登録
+        updates[`groups/${groupId}/members/${targetUserId}`] = true;
+        updates[`users/${targetUserId}/groups/${groupId}`] = true;
+
+        await db.ref().update(updates);
+
+        // 2. グループ内の現在のマスターイベントを取得してユーザーの共有領域へ復元
+        const groupEventsSnap = await db.ref(`groups/${groupId}/events`).once('value');
+        if (groupEventsSnap.exists()) {
+            const groupEvents = groupEventsSnap.val();
+            await db.ref(`users/${targetUserId}/sharedEvents/${groupId}`).set(groupEvents);
+        }
+
+        // 3. 共有復活の通知を作成
+        const newNotifRef = db.ref(`users/${targetUserId}/notifications`).push();
+        await newNotifRef.set({
+            groupId: groupId,
+            title: '共有の復元',
+            message: 'グループに再参加したため、共有スケジュールが復元されました。',
+            createdAt: firebase.database.ServerValue.TIMESTAMP
+        });
+
+        if (typeof showToast === 'function') {
+            showToast('グループ共有が復元されました。');
+        }
+
+    } catch (error) {
+        console.error('共有復元エラー:', error);
+    }
+}
+
+// ==========================================
+// 補助用：画面・モーダルからIDを取得する関数
+// ==========================================
+
+function getActiveGroupId() {
+    // モーダルや画面上のデータ属性、または選択中の要素からgroupIdを探す
+    const groupModal = document.getElementById('groupModal') || document.getElementById('inviteModal');
+    if (groupModal && groupModal.dataset && groupModal.dataset.groupId) {
+        return groupModal.dataset.groupId;
+    }
+    const groupSelect = document.getElementById('groupSelect') || document.getElementById('shareGroupSelect');
+    if (groupSelect && groupSelect.value) {
+        return groupSelect.value;
+    }
+    if (typeof state !== 'undefined' && (state.currentGroupId || state.activeGroupId)) {
+        return state.currentGroupId || state.activeGroupId;
+    }
+    return null;
+}
+
+function getSelectedMemberId() {
+    // メンバー一覧モーダル内で選択（チェック／タップ）されているメンバーのIDを取得
+    const selectedItem = document.querySelector('.member-item.selected, .member-item input[type="radio"]:checked, .member-item input[type="checkbox"]:checked');
+    if (selectedItem) {
+        return selectedItem.dataset.userId || selectedItem.value || selectedItem.closest('[data-user-id]')?.dataset.userId;
+    }
+    const memberSelect = document.getElementById('memberSelect') || document.getElementById('groupMemberListSelect');
+    if (memberSelect && memberSelect.value) {
+        return memberSelect.value;
+    }
+    return null;
 }
