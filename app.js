@@ -3678,3 +3678,654 @@ function initModalEvents() {
         });
     }
 }
+// グループを削除する関数
+function deleteGroup(groupId) {
+    if (!state.groups || !state.groups[groupId]) return;
+
+    const groupName = state.groups[groupId].name || 'グループ';
+    if (!confirm(`「${groupName}」を削除してもよろしいですか？`)) {
+        return;
+    }
+
+    // 各イベントの sharedGroupIds から該当グループIDを除外
+    if (state.events && Array.isArray(state.events)) {
+        state.events.forEach(event => {
+            if (Array.isArray(event.sharedGroupIds)) {
+                event.sharedGroupIds = event.sharedGroupIds.filter(id => id !== groupId);
+            }
+        });
+    }
+
+    // グループデータの削除
+    delete state.groups[groupId];
+
+    // クラウド連携関数が存在する場合は実行
+    if (typeof deleteGroupFromCloud === 'function') {
+        deleteGroupFromCloud(groupId);
+    }
+
+    saveData();
+    renderAllViews();
+    showToast('グループを削除しました');
+}
+
+// グループからメンバーを削除（外す）関数
+function removeMemberFromGroup(groupId, memberId) {
+    const group = state.groups ? state.groups[groupId] : null;
+    if (!group || !Array.isArray(group.members)) return;
+
+    const targetMember = group.members.find(m => (m.id || m.userId) === memberId);
+    const memberName = targetMember ? (targetMember.name || targetMember.userName || 'メンバー') : 'メンバー';
+
+    if (!confirm(`「${memberName}」をグループから削除しますか？`)) {
+        return;
+    }
+
+    // メンバーリストから対象を除外
+    group.members = group.members.filter(m => (m.id || m.userId) !== memberId);
+
+    // クラウド連携関数が存在する場合は同期
+    if (typeof syncGroupToCloud === 'function') {
+        syncGroupToCloud(group);
+    }
+
+    saveData();
+    
+    // グループ詳細画面の再描画処理があれば呼び出し、なければ全体再描画
+    if (typeof renderGroupDetail === 'function') {
+        renderGroupDetail(groupId);
+    } else {
+        renderAllViews();
+    }
+
+    showToast(`${memberName} を削除しました`);
+}
+// 選択中のグループのみを削除する専用関数
+function deleteCurrentGroup(groupId) {
+    const grp = state.groups[groupId];
+    if (!grp) return;
+
+    if (!confirm(`グループ「${grp.name}」を削除しますか？この操作は元に戻せません。`)) {
+        return;
+    }
+
+    if (isFirebaseReady) {
+        const db = firebase.database();
+        const memberIds = Object.keys(grp.members || {});
+
+        // 参加メンバー全員の userGroups リストからグループ参照を削除
+        memberIds.forEach(mId => {
+            db.ref(`userGroups/${mId}/${groupId}`).remove();
+        });
+
+        // クラウド上のグループ本体データおよび共有予定データを削除
+        db.ref(`groups/${groupId}`).remove();
+        db.ref(`groupEvents/${groupId}`).remove();
+    }
+
+    // ローカル状態の更新
+    delete state.groups[groupId];
+    state.selectedGroupId = null;
+
+    showToast(`🗑️ グループ「${grp.name}」を削除しました`);
+    renderGroupSection();
+    renderAllViews();
+}
+
+// メンバー管理タブ（state.groupSubTab === 'members'）へ削除ボタンを組み込んだ renderGroupDetailView
+function renderGroupDetailView(container) {
+    const grp = state.groups[state.selectedGroupId];
+    if (!grp) {
+        state.selectedGroupId = null;
+        renderGroupSection();
+        return;
+    }
+
+    const getGroupIds = (e) => {
+        if (!e || !e.sharedGroupIds) return [];
+        return Array.isArray(e.sharedGroupIds) ? e.sharedGroupIds : Object.values(e.sharedGroupIds);
+    };
+
+    container.innerHTML = '';
+
+    const detailCard = document.createElement('div');
+    detailCard.className = 'settings-card';
+    detailCard.style.cssText = 'padding: 16px; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom: 16px;';
+
+    const headerDiv = document.createElement('div');
+    headerDiv.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px;';
+    headerDiv.innerHTML = `
+        <h3 style="margin: 0; font-size: 1.1rem; color: #1e293b;">👨‍👩‍👧‍👦 ${grp.name}</h3>
+        <button class="btn btn-secondary btn-small" id="backToGroupListBtn" style="font-size:0.75rem;">← グループ一覧</button>
+    `;
+
+    detailCard.appendChild(headerDiv);
+
+    const subTabBar = document.createElement('div');
+    subTabBar.style.cssText = 'display: flex; gap: 6px; margin-bottom: 14px; border-bottom: 2px solid #f1f5f9; padding-bottom: 6px;';
+
+    const tabs = [
+        { id: 'events', label: '📅 共有予定' },
+        { id: 'members', label: '👥 メンバー・招待' },
+        { id: 'share', label: '📤 予定を共有' }
+    ];
+
+    tabs.forEach(tab => {
+        const btn = document.createElement('button');
+        const isActive = state.groupSubTab === tab.id;
+        btn.className = `btn ${isActive ? 'btn-primary' : 'btn-secondary'} btn-small`;
+        btn.style.cssText = `flex: 1; font-size: 0.75rem; padding: 6px 4px; text-align: center; border-radius: 8px;`;
+        btn.textContent = tab.label;
+        btn.onclick = () => {
+            state.groupSubTab = tab.id;
+            renderGroupSection();
+        };
+        subTabBar.appendChild(btn);
+    });
+
+    detailCard.appendChild(subTabBar);
+
+    const contentArea = document.createElement('div');
+
+    if (state.groupSubTab === 'events') {
+        const groupEvents = state.events.filter(e => getGroupIds(e).includes(grp.id));
+        if (groupEvents.length === 0) {
+            contentArea.innerHTML = '<div style="text-align:center; padding:20px; color:#94a3b8; font-size:0.85rem;">このグループに共有されている予定はありません</div>';
+        } else {
+            groupEvents.forEach(evt => {
+                const item = document.createElement('div');
+                item.className = 'detailed-event-card';
+                item.style.cssText = 'margin-bottom:8px; display:flex; align-items:center; justify-space-between; padding:8px 12px; cursor:pointer;';
+
+                const startD = evt.startDate || evt.date;
+                const endD = evt.endDate || evt.date;
+                const isSameDay = startD === endD;
+                const dateDisplay = isSameDay ? startD : `${startD} 〜 ${endD}`;
+                const timeDisplay = evt.isAllDay ? '終日' : `${evt.startTime} 〜 ${evt.endTime}`;
+
+                item.innerHTML = `
+                    <div style="display:flex; align-items:center; gap:8px; flex:1;">
+                        <div class="card-color-bar" style="background-color: ${evt.color || '#3b82f6'}; width:4px; height:36px; border-radius:2px;"></div>
+                        <div class="card-main-content">
+                            <div class="card-top-row" style="display:flex; align-items:center; gap:6px;">
+                                <span class="card-title" style="font-weight:bold; font-size:0.85rem;">${evt.title}</span>
+                                <span class="badge badge-secondary" style="font-size:0.7rem;">👤 ${evt.ownerName || 'メンバー'}</span>
+                            </div>
+                            <div class="card-meta-row" style="font-size:0.75rem; color:#64748b;">
+                                <span class="meta-item">📅 ${dateDisplay}</span>
+                                <span class="meta-item">⏰ ${timeDisplay}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <button type="button" class="btn btn-danger btn-small unshare-btn" style="font-size:0.75rem; padding:4px 8px;">🔓 解除</button>
+                    </div>
+                `;
+
+                item.onclick = (e) => {
+                    if (e.target.closest('.unshare-btn')) return;
+                    openEventModal(evt);
+                };
+
+                const unshareBtn = item.querySelector('.unshare-btn');
+                if (unshareBtn) {
+                    unshareBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        if (typeof unshareGroupEvent === 'function') {
+                            unshareGroupEvent(evt.id, grp.id);
+                        }
+                    };
+                }
+
+                contentArea.appendChild(item);
+            });
+        }
+    } else if (state.groupSubTab === 'members') {
+        const memberListDiv = document.createElement('div');
+        memberListDiv.style.marginBottom = '16px';
+        memberListDiv.innerHTML = '<div style="font-size:0.8rem; font-weight:bold; color:#475569; margin-bottom:6px;">現在のメンバー:</div>';
+
+        const tagsDiv = document.createElement('div');
+        tagsDiv.className = 'group-members-tags';
+        Object.values(grp.members || {}).forEach(mName => {
+            tagsDiv.innerHTML += `<span class="member-tag">👤 ${mName}</span>`;
+        });
+        memberListDiv.appendChild(tagsDiv);
+
+        const inviteDiv = document.createElement('div');
+        inviteDiv.style.cssText = 'margin-top: 14px; padding-top: 10px; border-top: 1px dashed #cbd5e1;';
+        inviteDiv.innerHTML = '<div style="font-size:0.8rem; font-weight:bold; color:#475569; margin-bottom:6px;">フレンドをグループに招待:</div>';
+
+        const unaddedFriends = Object.keys(state.friends || {}).filter(fId => !grp.members || !grp.members[fId]);
+
+        if (unaddedFriends.length === 0) {
+            inviteDiv.innerHTML += '<div style="font-size:0.75rem; color:#94a3b8;">招待可能な未参加のフレンドはいません</div>';
+        } else {
+            const inviteRow = document.createElement('div');
+            inviteRow.style.cssText = 'display:flex; gap:6px;';
+
+            let options = unaddedFriends.map(fId => `<option value="${fId}">${state.friends[fId]} (${fId})</option>`).join('');
+            inviteRow.innerHTML = `
+                <select class="select-box invite-friend-select" style="flex:1; font-size:0.75rem; padding:4px;">
+                    <option value="">フレンドを選択...</option>
+                    ${options}
+                </select>
+                <button class="btn btn-primary btn-small do-invite-btn" style="font-size:0.75rem; padding:4px 8px;">招待送信</button>
+            `;
+
+            inviteRow.querySelector('.do-invite-btn').onclick = () => {
+                const sel = inviteRow.querySelector('.invite-friend-select');
+                if (sel && sel.value) {
+                    inviteFriendToExistingGroup(grp.id, sel.value);
+                    renderGroupSection();
+                } else {
+                    alert('招待するフレンドを選択してください。');
+                }
+            };
+            inviteDiv.appendChild(inviteRow);
+        }
+
+        contentArea.appendChild(memberListDiv);
+        contentArea.appendChild(inviteDiv);
+
+        // --- メンバー管理画面の最下部に「表示中グループの削除エリア」を追加 ---
+        const deleteDiv = document.createElement('div');
+        deleteDiv.style.cssText = 'margin-top: 24px; padding-top: 14px; border-top: 1px solid #fee2e2; text-align: right;';
+        deleteDiv.innerHTML = `
+            <button type="button" class="btn btn-danger btn-small delete-group-btn" style="font-size:0.75rem; padding:6px 12px; background-color:#ef4444; color:#ffffff; border:none; border-radius:6px; cursor:pointer;">
+                🗑️ このグループを削除
+            </button>
+        `;
+
+        deleteDiv.querySelector('.delete-group-btn').onclick = () => {
+            deleteCurrentGroup(grp.id);
+        };
+        contentArea.appendChild(deleteDiv);
+
+    } else if (state.groupSubTab === 'share') {
+        const myEvents = state.events.filter(e => !e.ownerId || e.ownerId === state.profile.userId);
+
+        if (myEvents.length === 0) {
+            contentArea.innerHTML = '<div style="text-align:center; padding:20px; color:#94a3b8; font-size:0.85rem;">共有可能な自分の予定がありません</div>';
+        } else {
+            const intro = document.createElement('div');
+            intro.style.cssText = 'font-size:0.75rem; color:#64748b; margin-bottom:10px;';
+            intro.textContent = 'あなたの予定一覧から選択して、このグループへ一括共有・解除できます：';
+            contentArea.appendChild(intro);
+
+            myEvents.forEach(evt => {
+                const currentGroupIds = getGroupIds(evt);
+                const isShared = currentGroupIds.includes(grp.id);
+
+                const item = document.createElement('div');
+                item.className = 'detailed-event-card';
+                item.style.cssText = 'margin-bottom:8px; display:flex; align-items:center; justify-content:space-between; padding:8px 12px;';
+
+                const startD = evt.startDate || evt.date;
+                const timeStr = evt.isAllDay ? '終日' : evt.startTime;
+
+                item.innerHTML = `
+                    <div>
+                        <div style="font-weight:bold; font-size:0.85rem;">${evt.title}</div>
+                        <div style="font-size:0.75rem; color:#64748b;">📅 ${startD} (${timeStr})</div>
+                    </div>
+                    <div>
+                        ${isShared
+                            ? '<button type="button" class="btn btn-danger btn-small share-this-evt-btn" style="font-size:0.75rem; padding:4px 8px;">🔓 共有解除</button>'
+                            : '<button type="button" class="btn btn-primary btn-small share-this-evt-btn" style="font-size:0.75rem; padding:4px 8px;">🔗 共有</button>'}
+                    </div>
+                `;
+
+                const shareBtn = item.querySelector('.share-this-evt-btn');
+                if (shareBtn) {
+                    shareBtn.onclick = () => {
+                        const groupIds = getGroupIds(evt);
+                        const currentlyShared = groupIds.includes(grp.id);
+
+                        if (currentlyShared) {
+                            if (!confirm(`「${evt.title}」のグループ共有を解除しますか？`)) return;
+
+                            evt.sharedGroupIds = groupIds.filter(id => id !== grp.id);
+
+                            if (typeof isFirebaseReady !== 'undefined' && isFirebaseReady) {
+                                firebase.database().ref(`groupEvents/${grp.id}/${evt.id}`).remove();
+                            }
+
+                            showToast(`「${evt.title}」の共有を解除しました`);
+                        } else {
+                            evt.sharedGroupIds = [...groupIds, grp.id];
+                            evt.ownerId = evt.ownerId || state.profile.userId;
+                            evt.ownerName = evt.ownerName || state.profile.userName;
+
+                            if (typeof syncSharedEventToCloud === 'function') syncSharedEventToCloud(evt);
+                            if (typeof notifyGroupMembersForEvent === 'function') notifyGroupMembersForEvent([grp.id], evt);
+
+                            showToast(`「${evt.title}」をグループに共有しました`);
+                        }
+
+                        saveData();
+                        renderGroupSection();
+                        renderAllViews();
+                    };
+                }
+
+                contentArea.appendChild(item);
+            });
+        }
+    }
+
+    detailCard.appendChild(contentArea);
+    container.appendChild(detailCard);
+
+    const backBtn = detailCard.querySelector('#backToGroupListBtn');
+    if (backBtn) {
+        backBtn.onclick = () => {
+            state.selectedGroupId = null;
+            renderGroupSection();
+        };
+    }
+}
+// 個別のメンバーをグループから削除する処理
+function removeMemberFromGroup(groupId, memberId) {
+    const grp = state.groups[groupId];
+    if (!grp || !grp.members || !grp.members[memberId]) return;
+
+    const memberName = grp.members[memberId];
+    if (!confirm(`「${memberName}」さんをグループから削除しますか？`)) {
+        return;
+    }
+
+    if (typeof isFirebaseReady !== 'undefined' && isFirebaseReady) {
+        const db = firebase.database();
+        // 該当メンバーの userGroups から対象グループ参照を削除
+        db.ref(`userGroups/${memberId}/${groupId}`).remove();
+        // グループ内の members ノードから該当メンバーを削除
+        db.ref(`groups/${groupId}/members/${memberId}`).remove();
+    }
+
+    // ローカル状態の更新
+    delete grp.members[memberId];
+
+    if (typeof showToast === 'function') showToast(`👤 「${memberName}」さんをグループから削除しました`);
+    if (typeof saveData === 'function') saveData();
+    renderGroupSection();
+    if (typeof renderAllViews === 'function') renderAllViews();
+}
+
+// メンバー個別の削除ボタンが組み込まれた renderGroupDetailView
+function renderGroupDetailView(container) {
+    const grp = state.groups[state.selectedGroupId];
+    if (!grp) {
+        state.selectedGroupId = null;
+        renderGroupSection();
+        return;
+    }
+
+    const getGroupIds = (e) => {
+        if (!e || !e.sharedGroupIds) return [];
+        return Array.isArray(e.sharedGroupIds) ? e.sharedGroupIds : Object.values(e.sharedGroupIds);
+    };
+
+    container.innerHTML = '';
+
+    const detailCard = document.createElement('div');
+    detailCard.className = 'settings-card';
+    detailCard.style.cssText = 'padding: 16px; background: #ffffff; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom: 16px;';
+
+    const headerDiv = document.createElement('div');
+    headerDiv.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px;';
+    headerDiv.innerHTML = `
+        <h3 style="margin: 0; font-size: 1.1rem; color: #1e293b;">👨‍👩‍👧‍👦 ${grp.name}</h3>
+        <button class="btn btn-secondary btn-small" id="backToGroupListBtn" style="font-size:0.75rem;">← グループ一覧</button>
+    `;
+
+    detailCard.appendChild(headerDiv);
+
+    const subTabBar = document.createElement('div');
+    subTabBar.style.cssText = 'display: flex; gap: 6px; margin-bottom: 14px; border-bottom: 2px solid #f1f5f9; padding-bottom: 6px;';
+
+    const tabs = [
+        { id: 'events', label: '📅 共有予定' },
+        { id: 'members', label: '👥 メンバー・招待' },
+        { id: 'share', label: '📤 予定を共有' }
+    ];
+
+    tabs.forEach(tab => {
+        const btn = document.createElement('button');
+        const isActive = state.groupSubTab === tab.id;
+        btn.className = `btn ${isActive ? 'btn-primary' : 'btn-secondary'} btn-small`;
+        btn.style.cssText = `flex: 1; font-size: 0.75rem; padding: 6px 4px; text-align: center; border-radius: 8px;`;
+        btn.textContent = tab.label;
+        btn.onclick = () => {
+            state.groupSubTab = tab.id;
+            renderGroupSection();
+        };
+        subTabBar.appendChild(btn);
+    });
+
+    detailCard.appendChild(subTabBar);
+
+    const contentArea = document.createElement('div');
+
+    if (state.groupSubTab === 'events') {
+        const groupEvents = state.events.filter(e => getGroupIds(e).includes(grp.id));
+        if (groupEvents.length === 0) {
+            contentArea.innerHTML = '<div style="text-align:center; padding:20px; color:#94a3b8; font-size:0.85rem;">このグループに共有されている予定はありません</div>';
+        } else {
+            groupEvents.forEach(evt => {
+                const item = document.createElement('div');
+                item.className = 'detailed-event-card';
+                item.style.cssText = 'margin-bottom:8px; display:flex; align-items:center; justify-space-between; padding:8px 12px; cursor:pointer;';
+
+                const startD = evt.startDate || evt.date;
+                const endD = evt.endDate || evt.date;
+                const isSameDay = startD === endD;
+                const dateDisplay = isSameDay ? startD : `${startD} 〜 ${endD}`;
+                const timeDisplay = evt.isAllDay ? '終日' : `${evt.startTime} 〜 ${evt.endTime}`;
+
+                item.innerHTML = `
+                    <div style="display:flex; align-items:center; gap:8px; flex:1;">
+                        <div class="card-color-bar" style="background-color: ${evt.color || '#3b82f6'}; width:4px; height:36px; border-radius:2px;"></div>
+                        <div class="card-main-content">
+                            <div class="card-top-row" style="display:flex; align-items:center; gap:6px;">
+                                <span class="card-title" style="font-weight:bold; font-size:0.85rem;">${evt.title}</span>
+                                <span class="badge badge-secondary" style="font-size:0.7rem;">👤 ${evt.ownerName || 'メンバー'}</span>
+                            </div>
+                            <div class="card-meta-row" style="font-size:0.75rem; color:#64748b;">
+                                <span class="meta-item">📅 ${dateDisplay}</span>
+                                <span class="meta-item">⏰ ${timeDisplay}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <button type="button" class="btn btn-danger btn-small unshare-btn" style="font-size:0.75rem; padding:4px 8px;">🔓 解除</button>
+                    </div>
+                `;
+
+                item.onclick = (e) => {
+                    if (e.target.closest('.unshare-btn')) return;
+                    openEventModal(evt);
+                };
+
+                const unshareBtn = item.querySelector('.unshare-btn');
+                if (unshareBtn) {
+                    unshareBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        if (typeof unshareGroupEvent === 'function') {
+                            unshareGroupEvent(evt.id, grp.id);
+                        }
+                    };
+                }
+
+                contentArea.appendChild(item);
+            });
+        }
+    } else if (state.groupSubTab === 'members') {
+        const memberListDiv = document.createElement('div');
+        memberListDiv.style.marginBottom = '16px';
+        memberListDiv.innerHTML = '<div style="font-size:0.8rem; font-weight:bold; color:#475569; margin-bottom:8px;">現在のメンバー:</div>';
+
+        const tagsDiv = document.createElement('div');
+        tagsDiv.className = 'group-members-tags';
+        tagsDiv.style.cssText = 'display: flex; flex-wrap: wrap; gap: 8px;';
+
+        const memberEntries = Object.entries(grp.members || {});
+
+        if (memberEntries.length === 0) {
+            tagsDiv.innerHTML = '<div style="font-size:0.75rem; color:#94a3b8;">メンバーがいません</div>';
+        } else {
+            memberEntries.forEach(([mId, mName]) => {
+                const tag = document.createElement('div');
+                tag.className = 'member-tag';
+                tag.style.cssText = 'display: inline-flex; align-items: center; gap: 6px; background: #f8fafc; border: 1px solid #e2e8f0; padding: 4px 10px; border-radius: 16px; font-size: 0.8rem; color: #334155;';
+
+                const isSelf = state.profile && state.profile.userId === mId;
+                tag.innerHTML = `
+                    <span>👤 ${mName}${isSelf ? ' (自分)' : ''}</span>
+                    <button type="button" class="remove-member-btn" title="${mName}さんを削除" style="border: none; background: transparent; color: #ef4444; font-weight: bold; cursor: pointer; padding: 0 2px; font-size: 0.85rem; line-height: 1;">✕</button>
+                `;
+
+                tag.querySelector('.remove-member-btn').onclick = () => {
+                    removeMemberFromGroup(grp.id, mId);
+                };
+
+                tagsDiv.appendChild(tag);
+            });
+        }
+        memberListDiv.appendChild(tagsDiv);
+
+        const inviteDiv = document.createElement('div');
+        inviteDiv.style.cssText = 'margin-top: 14px; padding-top: 10px; border-top: 1px dashed #cbd5e1;';
+        inviteDiv.innerHTML = '<div style="font-size:0.8rem; font-weight:bold; color:#475569; margin-bottom:6px;">フレンドをグループに招待:</div>';
+
+        const unaddedFriends = Object.keys(state.friends || {}).filter(fId => !grp.members || !grp.members[fId]);
+
+        if (unaddedFriends.length === 0) {
+            inviteDiv.innerHTML += '<div style="font-size:0.75rem; color:#94a3b8;">招待可能な未参加のフレンドはいません</div>';
+        } else {
+            const inviteRow = document.createElement('div');
+            inviteRow.style.cssText = 'display:flex; gap:6px;';
+
+            let options = unaddedFriends.map(fId => `<option value="${fId}">${state.friends[fId]} (${fId})</option>`).join('');
+            inviteRow.innerHTML = `
+                <select class="select-box invite-friend-select" style="flex:1; font-size:0.75rem; padding:4px;">
+                    <option value="">フレンドを選択...</option>
+                    ${options}
+                </select>
+                <button class="btn btn-primary btn-small do-invite-btn" style="font-size:0.75rem; padding:4px 8px;">招待送信</button>
+            `;
+
+            inviteRow.querySelector('.do-invite-btn').onclick = () => {
+                const sel = inviteRow.querySelector('.invite-friend-select');
+                if (sel && sel.value) {
+                    inviteFriendToExistingGroup(grp.id, sel.value);
+                    renderGroupSection();
+                } else {
+                    alert('招待するフレンドを選択してください。');
+                }
+            };
+            inviteDiv.appendChild(inviteRow);
+        }
+
+        contentArea.appendChild(memberListDiv);
+        contentArea.appendChild(inviteDiv);
+
+        // グループ全体の削除ボタン
+        const deleteDiv = document.createElement('div');
+        deleteDiv.style.cssText = 'margin-top: 24px; padding-top: 14px; border-top: 1px solid #fee2e2; text-align: right;';
+        deleteDiv.innerHTML = `
+            <button type="button" class="btn btn-danger btn-small delete-group-btn" style="font-size:0.75rem; padding:6px 12px; background-color:#ef4444; color:#ffffff; border:none; border-radius:6px; cursor:pointer;">
+                🗑️ このグループを削除
+            </button>
+        `;
+
+        deleteDiv.querySelector('.delete-group-btn').onclick = () => {
+            if (typeof deleteCurrentGroup === 'function') {
+                deleteCurrentGroup(grp.id);
+            }
+        };
+        contentArea.appendChild(deleteDiv);
+
+    } else if (state.groupSubTab === 'share') {
+        const myEvents = state.events.filter(e => !e.ownerId || e.ownerId === state.profile.userId);
+
+        if (myEvents.length === 0) {
+            contentArea.innerHTML = '<div style="text-align:center; padding:20px; color:#94a3b8; font-size:0.85rem;">共有可能な自分の予定がありません</div>';
+        } else {
+            const intro = document.createElement('div');
+            intro.style.cssText = 'font-size:0.75rem; color:#64748b; margin-bottom:10px;';
+            intro.textContent = 'あなたの予定一覧から選択して、このグループへ一括共有・解除できます：';
+            contentArea.appendChild(intro);
+
+            myEvents.forEach(evt => {
+                const currentGroupIds = getGroupIds(evt);
+                const isShared = currentGroupIds.includes(grp.id);
+
+                const item = document.createElement('div');
+                item.className = 'detailed-event-card';
+                item.style.cssText = 'margin-bottom:8px; display:flex; align-items:center; justify-content:space-between; padding:8px 12px;';
+
+                const startD = evt.startDate || evt.date;
+                const timeStr = evt.isAllDay ? '終日' : evt.startTime;
+
+                item.innerHTML = `
+                    <div>
+                        <div style="font-weight:bold; font-size:0.85rem;">${evt.title}</div>
+                        <div style="font-size:0.75rem; color:#64748b;">📅 ${startD} (${timeStr})</div>
+                    </div>
+                    <div>
+                        ${isShared
+                            ? '<button type="button" class="btn btn-danger btn-small share-this-evt-btn" style="font-size:0.75rem; padding:4px 8px;">🔓 共有解除</button>'
+                            : '<button type="button" class="btn btn-primary btn-small share-this-evt-btn" style="font-size:0.75rem; padding:4px 8px;">🔗 共有</button>'}
+                    </div>
+                `;
+
+                const shareBtn = item.querySelector('.share-this-evt-btn');
+                if (shareBtn) {
+                    shareBtn.onclick = () => {
+                        const groupIds = getGroupIds(evt);
+                        const currentlyShared = groupIds.includes(grp.id);
+
+                        if (currentlyShared) {
+                            if (!confirm(`「${evt.title}」のグループ共有を解除しますか？`)) return;
+
+                            evt.sharedGroupIds = groupIds.filter(id => id !== grp.id);
+
+                            if (typeof isFirebaseReady !== 'undefined' && isFirebaseReady) {
+                                firebase.database().ref(`groupEvents/${grp.id}/${evt.id}`).remove();
+                            }
+
+                            showToast(`「${evt.title}」の共有を解除しました`);
+                        } else {
+                            evt.sharedGroupIds = [...groupIds, grp.id];
+                            evt.ownerId = evt.ownerId || state.profile.userId;
+                            evt.ownerName = evt.ownerName || state.profile.userName;
+
+                            if (typeof syncSharedEventToCloud === 'function') syncSharedEventToCloud(evt);
+                            if (typeof notifyGroupMembersForEvent === 'function') notifyGroupMembersForEvent([grp.id], evt);
+
+                            showToast(`「${evt.title}」をグループに共有しました`);
+                        }
+
+                        saveData();
+                        renderGroupSection();
+                        renderAllViews();
+                    };
+                }
+
+                contentArea.appendChild(item);
+            });
+        }
+    }
+
+    detailCard.appendChild(contentArea);
+    container.appendChild(detailCard);
+
+    const backBtn = detailCard.querySelector('#backToGroupListBtn');
+    if (backBtn) {
+        backBtn.onclick = () => {
+            state.selectedGroupId = null;
+            renderGroupSection();
+        };
+    }
+}
