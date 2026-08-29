@@ -626,7 +626,7 @@ function renderDayTimeline() {
         card.style.height = `${Math.max(heightPx, 24)}px`;
         
         const shareIcon = (evt.sharedGroupIds && evt.sharedGroupIds.length > 0) || evt.ownerId ? '👥 ' : '';
-        const icon = evt.isImportant ? '⭐ ' : '';
+        const icon = evt.isImportant ? '' : '';
         
         card.innerHTML = `
             <strong>${shareIcon}${icon}${evt.title}</strong> (${evt.startTime}-${evt.endTime})
@@ -976,13 +976,13 @@ function renderMonthCalendar() {
             }
 
             let prefix = '';
-            if (evt.sharedGroupIds || evt.ownerId) prefix += '👥';
-            if (evt.isImportant) prefix += '⭐';
-            if (evt.isAllDay) prefix += '【終日】';
-            else if (isMultiDay) prefix += '↔️';
+            if (evt.sharedGroupIds || evt.ownerId) prefix += '';
+            if (evt.isImportant) prefix += '';
+            if (evt.isAllDay) prefix += '';
+            else if (isMultiDay) prefix += '';
 
             let displayTitle = prefix + evt.title;
-            if (displayTitle.length > 6) {
+            if (displayTitle.length > 4) {
                 displayTitle = displayTitle.substring(0, 5) + '…';
             }
 
@@ -3052,4 +3052,33 @@ function unshareAllGroupEvents(eventId) {
     closeEventModal();
     renderAllViews();
     showToast('🔓 共有を解除しました');
+}
+// ユーザーアイコン削除（解除）ボタンのイベント登録
+const removeIconBtn = document.getElementById('removeUserIconBtn');
+if (removeIconBtn) {
+    removeIconBtn.addEventListener('click', () => {
+        if (!confirm('アイコンを解除して初期画像に戻しますか？')) return;
+
+        // ファイル選択の選択状態をクリア
+        const iconInput = document.getElementById('userIconInput');
+        if (iconInput) {
+            iconInput.value = '';
+        }
+
+        // プロフィールデータのアイコン要素を初期化
+        if (state.profile) {
+            state.profile.icon = null; // 設定されているキー名（icon/avatarUrl等）に合わせて変更してください
+        }
+
+        // 画面上のプレビュー画像を初期化（プレビュー要素が存在する場合）
+        const iconPreview = document.getElementById('userIconPreview');
+        if (iconPreview) {
+            iconPreview.src = ''; // デフォルト画像のパス（例: 'images/default-avatar.png'）がある場合は指定
+        }
+
+        // データの保存と全体描画の更新
+        saveData();
+        renderAllViews();
+        showToast('🗑️ アイコンを解除しました');
+    });
 }
