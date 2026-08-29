@@ -94,33 +94,42 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function registerInlineServiceWorker() {
-    if ('serviceWorker' in navigator) {
-        const swCode = `
-            self.addEventListener('install', (e) => self.skipWaiting());
-            self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
-            self.addEventListener('notificationclick', (event) => {
-                event.notification.close();
-                event.waitUntil(
-                    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-                        for (let i = 0; i < clientList.length; i++) {
-                            let client = clientList[i];
-                            if ('focus' in client) return client.focus();
-                        }
-                        if (clients.openWindow) return clients.openWindow('./');
-                    })
-                );
-            });
-        `;
-        const blob = new Blob([swCode], { type: 'application/javascript' });
-        if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js')
-            .then(reg => console.log('ServiceWorker 登録完了:', reg))
-            .catch(err => console.error('ServiceWorker 登録失敗:', err));
+  if (!('serviceWorker' in navigator)) return;
+
+  const swCode = `
+    self.addEventListener('install', (e) => self.skipWaiting());
+    self.addEventListener('activate', (e) => e.waitUntil(clients.claim()));
+    self.addEventListener('push', (e) => {
+      const data = e.data ? e.data.json() : {};
+      self.registration.showNotification(data.title || '通知', {
+        body: data.body || '',
+        icon: data.icon || ''
+      });
     });
+  `;
+
+  const blob = new Blob([swCode], { type: 'application/javascript' });
+  const blobUrl = URL.createObjectURL(blob);
+
+  navigator.serviceWorker.register(blobUrl)
+    .then((reg) => console.log('SW 登録成功:', reg))
+    .catch((err) => console.error('SW 登録失敗:', err));
 }
+function openEventModalForFavorite(eventData) {
+  // HTML側にある保存ボタンのIDに合わせて取得
+  const saveBtn = document.getElementById('saveModalBtn'); 
+  if (!saveBtn) {
+    console.error('saveModalBtn が見つかりません');
+    return;
+  }
+
+  saveBtn.onclick = function () {
+    // イベント保存処理
+  };
 }
-}
+
+// DOM構築完了後に実行
+document.addEventListener('DOMContentLoaded', registerInlineServiceWorker);
 
 function initFirebase() {
     try {
