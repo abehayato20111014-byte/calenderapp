@@ -3503,6 +3503,7 @@ function initGroupDeleteEvent() {
         deleteGroup(activeGroupId, groupName);
     });
 }
+initGroupDeleteEvent();
 
 // グループ削除ロジック
 function deleteGroup(groupId, groupName) {
