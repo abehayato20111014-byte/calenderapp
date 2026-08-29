@@ -3356,3 +3356,186 @@ function getSelectedMemberId() {
     }
     return null;
 }
+// プロフィール編集ボタン（「再設定 / 名前変更」）のイベント設定
+const editProfileBtn = document.getElementById('editProfileBtn');
+if (editProfileBtn) {
+    editProfileBtn.addEventListener('click', () => {
+        const userIdInput = document.getElementById('setupUserIdInput');
+        const userNameInput = document.getElementById('setupUserNameInput');
+        const profileCard = document.getElementById('profileSetupCard');
+        const saveBtn = document.getElementById('saveProfileBtn');
+        const cancelBtn = document.getElementById('cancelProfileEditBtn');
+
+        if (profileCard) profileCard.classList.remove('hidden');
+        if (userIdInput) {
+            userIdInput.value = state.profile.userId;
+            userIdInput.disabled = true; // ★ ユーザーIDは変更不可（固定）
+        }
+        if (userNameInput) {
+            userNameInput.value = state.profile.userName;
+        }
+        if (saveBtn) saveBtn.textContent = 'ユーザーネームを保存';
+        if (cancelBtn) cancelBtn.classList.remove('hidden');
+    });
+}
+
+// キャンセルボタン
+const cancelProfileEditBtn = document.getElementById('cancelProfileEditBtn');
+if (cancelProfileEditBtn) {
+    cancelProfileEditBtn.addEventListener('click', () => {
+        document.getElementById('profileSetupCard').classList.add('hidden');
+    });
+}
+
+// プロフィール保存処理（ユーザーネームのみ更新に対応）
+const saveProfileBtn = document.getElementById('saveProfileBtn');
+if (saveProfileBtn) {
+    saveProfileBtn.addEventListener('click', () => {
+        const userIdInput = document.getElementById('setupUserIdInput');
+        const userNameInput = document.getElementById('setupUserNameInput');
+        
+        const newUserId = userIdInput.value.trim();
+        const newUserName = userNameInput.value.trim();
+
+        if (!newUserName) {
+            alert('ユーザーネームを入力してください。');
+            return;
+        }
+
+        // 既存のユーザーIDがある場合はそのまま使用
+        const finalUserId = state.profile.userId || newUserId;
+        if (!finalUserId) {
+            alert('ユーザーIDを入力してください。');
+            return;
+        }
+
+        state.profile.userId = finalUserId;
+        state.profile.userName = newUserName;
+
+        saveData(); // ローカルストレージ＆クラウド同期
+
+        // Firebase上のユーザーネームのみ更新
+        if (isFirebaseReady && state.profile.userId) {
+            firebase.database().ref('users/' + state.profile.userId + '/userName').set(newUserName);
+        }
+
+        showToast('ユーザーネームを更新しました！');
+        renderGroupSection();
+    });
+}
+// メンバー一覧レンダリング関数（例）
+function renderGroupMemberList(groupId, members) {
+    const memberListContainer = document.getElementById('groupMemberList');
+    if (!memberListContainer) return;
+
+    memberListContainer.innerHTML = '';
+
+    Object.entries(members).forEach(([memberId, memberData]) => {
+        const memberRow = document.createElement('div');
+        memberRow.className = 'member-item-row';
+        memberRow.style.cssText = 'display:flex; justify-style:space-between; align-items:center; padding:6px 0; border-bottom:1px solid #e2e8f0;';
+
+        const isMe = memberId === state.profile.userId;
+        const displayName = memberData.userName || memberData.name || memberId;
+
+        memberRow.innerHTML = `
+            <span>👤 ${displayName} ${isMe ? '(自分)' : ''}</span>
+            ${!isMe ? `<button class="btn btn-small remove-member-btn" data-user-id="${memberId}" style="background-color:#fee2e2; color:#ef4444; border:none; padding:2px 8px; border-radius:4px;">削除</button>` : ''}
+        `;
+
+        // メンバー削除ボタンの動作
+        const removeBtn = memberRow.querySelector('.remove-member-btn');
+        if (removeBtn) {
+            removeBtn.addEventListener('click', () => {
+                removeMemberFromGroup(groupId, memberId, displayName);
+            });
+        }
+
+        memberListContainer.appendChild(memberRow);
+    });
+}
+
+// メンバー削除（追放）ロジック
+function removeMemberFromGroup(groupId, memberId, memberName) {
+    if (!confirm(`「${memberName}」をこのグループから削除しますか？`)) {
+        return;
+    }
+
+    if (!isFirebaseReady) {
+        alert('ネットワーク接続を確認してください。');
+        return;
+    }
+
+    const db = firebase.database();
+
+    // 1. グループからメンバーを削除
+    db.ref(`groups/${groupId}/members/${memberId}`).remove()
+        .then(() => {
+            // 2. 対象ユーザーのグループ一覧からも削除
+            return db.ref(`users/${memberId}/groups/${groupId}`).remove();
+        })
+        .then(() => {
+            showToast(`「${memberName}」をグループから削除しました`);
+            // ローカルデータの更新 & 再描画
+            if (state.groups[groupId] && state.groups[groupId].members) {
+                delete state.groups[groupId].members[memberId];
+            }
+            renderGroupSection();
+        })
+        .catch((err) => {
+            console.error('メンバー削除エラー:', err);
+            alert('メンバーの削除に失敗しました。');
+        });
+}
+// グループ削除イベントの初期化
+function initGroupDeleteEvent() {
+    const deleteBtn = document.getElementById('deleteGroupBtn');
+    if (!deleteBtn) return;
+
+    deleteBtn.addEventListener('click', () => {
+        const activeGroupId = getActiveGroupId(); // 選択中のグループIDを取得
+        if (!activeGroupId) {
+            alert('削除対象のグループが選択されていません。');
+            return;
+        }
+
+        const groupName = state.groups[activeGroupId]?.name || 'このグループ';
+        deleteGroup(activeGroupId, groupName);
+    });
+}
+
+// グループ削除ロジック
+function deleteGroup(groupId, groupName) {
+    if (!confirm(`本当「${groupName}」を削除（解散）しますか？\nこの操作は元に戻せません。`)) {
+        return;
+    }
+
+    if (!isFirebaseReady) {
+        alert('ネットワーク接続を確認してください。');
+        return;
+    }
+
+    const db = firebase.database();
+    const group = state.groups[groupId];
+    const memberIds = group && group.members ? Object.keys(group.members) : [state.profile.userId];
+
+    // 1. 各メンバーの users/{memberId}/groups/{groupId} を削除
+    const updates = {};
+    memberIds.forEach(mId => {
+        updates[`users/${mId}/groups/${groupId}`] = null;
+    });
+    // 2. groups/{groupId} ノードを削除
+    updates[`groups/${groupId}`] = null;
+
+    db.ref().update(updates)
+        .then(() => {
+            showToast(`グループ「${groupName}」を削除しました`);
+            delete state.groups[groupId];
+            state.selectedGroupId = null;
+            renderGroupSection();
+        })
+        .catch((err) => {
+            console.error('グループ削除エラー:', err);
+            alert('グループの削除に失敗しました。');
+        });
+}
