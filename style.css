@@ -406,8 +406,8 @@ button {
 
 .calendar-grid {
     display: grid;
-    grid-template-columns: repeat(7, 1fr);
-    grid-auto-rows: minmax(70px, auto);
+    grid-template-columns: repeat(7, 1fr); /* 7列を完全に均等分割 */
+    width: 100%;
 }
 
 .calendar-day-cell {
@@ -418,6 +418,10 @@ button {
     flex-direction: column;
     gap: 2px;
     cursor: pointer;
+    min-height: 70px;     /* マスの最小高さを固定 */
+    height: 70px;         /* 高さを固定して伸縮を防止 */
+    overflow: hidden;     /* 中身があふれてもマスを広げない */
+    box-sizing: border-box;
 }
 
 .calendar-day-cell.disabled {
@@ -445,9 +449,25 @@ button {
     font-size: 0.65rem;
     padding: 2px 4px;
     border-radius: 4px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: nowrap;       /* 改行させずに1行に収める */
+    overflow: hidden;          /* はみ出た部分を非表示 */
+    text-overflow: ellipsis;   /* はみ出た文字を「...」にする */
+    display: block;
+    width: 100%;
+}
+
+/* スマホ表示（画面幅768px以下）用のカレンダー調整 */
+@media (max-width: 768px) {
+    .calendar-day-cell {
+        min-height: 60px;
+        height: 60px;
+        padding: 2px;
+    }
+
+    .cell-event {
+        font-size: 0.6rem;
+        margin-bottom: 1px;
+    }
 }
 
 /* ==========================================
@@ -830,6 +850,7 @@ button {
     z-index: 30000;
     box-shadow: 0 4px 12px rgba(0,0,0,0.2);
 }
+
 /* ⭐ 共有予定用スタイル */
 .shared-event-notice {
     background-color: #fef2f2;
@@ -885,6 +906,7 @@ button {
     border-radius: 4px;
     font-weight: bold;
 }
+
 /* ==========================================
    ⭐ 予定の固定（ロック）用スタイル (style.css の末尾に追加)
    ========================================== */
