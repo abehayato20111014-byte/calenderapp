@@ -6,8 +6,8 @@ dayjs.locale('ja');
 // 共有グループIDを安全に配列化して取得する共通関数
 function getSharedGroupIds(evt) {
     if (!evt || !evt.sharedGroupIds) return [];
-    return Array.isArray(evt.sharedGroupIds) 
-        ? evt.sharedGroupIds 
+    return Array.isArray(evt.sharedGroupIds)
+        ? evt.sharedGroupIds
         : Object.values(evt.sharedGroupIds);
 }
 const firebaseConfig = {
@@ -35,14 +35,14 @@ const state = {
     customTheme: { bgImage: '', userIcon: '' },
     activeTab: 'view-dayweek',
     activeSubView: 'day',
-    friends: {},          
-    incomingRequests: [], 
-    groups: {},           
+    friends: {},
+    incomingRequests: [],
+    groups: {},
     tutorialStep: 1,
     currentEditingEvent: null,
-    selectedGroupId: null,         
-    groupSubTab: 'events',         
-    newGroupMembers: []            
+    selectedGroupId: null,
+    groupSubTab: 'events',
+    newGroupMembers: []
 };
 
 let currentModalNotifications = [];
@@ -372,7 +372,7 @@ function unlockAudioContext() {
 function playNotificationSound() {
     try {
         unlockAudioContext();
-        
+
         const now = audioCtx.currentTime;
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
@@ -381,7 +381,7 @@ function playNotificationSound() {
         osc.frequency.setValueAtTime(880, now);
         osc.frequency.exponentialRampToValueAtTime(1760, now + 0.15);
         osc.frequency.setValueAtTime(1320, now + 0.15);
-        
+
         gain.gain.setValueAtTime(0.4, now);
         gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
 
@@ -473,7 +473,7 @@ function switchTab(tabId) {
 
     const navBtn = document.querySelector(`.bottom-nav .nav-item[data-tab="${tabId}"]`);
     if (navBtn) navBtn.classList.add('active');
-    
+
     const tabEl = document.getElementById(tabId);
     if (tabEl) tabEl.classList.add('active');
 
@@ -496,7 +496,7 @@ function renderAllViews() {
 function initDayWeekView() {
     const btnDay = document.getElementById('btnViewDay');
     const btnWeek = document.getElementById('btnViewWeek');
-    
+
     if (btnDay && btnWeek) {
         btnDay.addEventListener('click', () => {
             btnDay.classList.add('active');
@@ -520,8 +520,8 @@ function initDayWeekView() {
     const prevBtn = document.getElementById('prevDateBtn');
     if (prevBtn) {
         prevBtn.addEventListener('click', () => {
-            state.currentDate = state.activeSubView === 'day' 
-                ? state.currentDate.subtract(1, 'day') 
+            state.currentDate = state.activeSubView === 'day'
+                ? state.currentDate.subtract(1, 'day')
                 : state.currentDate.subtract(1, 'week');
             renderAllViews();
         });
@@ -530,8 +530,8 @@ function initDayWeekView() {
     const nextBtn = document.getElementById('nextDateBtn');
     if (nextBtn) {
         nextBtn.addEventListener('click', () => {
-            state.currentDate = state.activeSubView === 'day' 
-                ? state.currentDate.add(1, 'day') 
+            state.currentDate = state.activeSubView === 'day'
+                ? state.currentDate.add(1, 'day')
                 : state.currentDate.add(1, 'week');
             renderAllViews();
         });
@@ -575,7 +575,7 @@ function renderDayTimeline() {
     const dateDisp = document.getElementById('currentDateDisplay');
     if (dateDisp) {
         dateDisp.textContent = `${state.currentDate.format('YYYY/MM/DD')}(${jaDay})`;
-        
+
         // 土曜日は青、日曜日は赤でスタイル適用
         const dayOfWeek = state.currentDate.day();
         dateDisp.classList.remove('sat', 'sun');
@@ -589,7 +589,7 @@ function renderDayTimeline() {
             dateDisp.style.color = '';
         }
     }
-    
+
     const container = document.getElementById('eventsContainer');
     if (!container) return;
     container.innerHTML = '';
@@ -600,7 +600,7 @@ function renderDayTimeline() {
     todayEvents.forEach(evt => {
         const card = document.createElement('div');
        card.className = `event-card ${evt.isImportant ? 'important-event' : ''} ${evt.isLocked ? 'is-locked' : ''}`;
-        
+
         card.style.overflow = 'hidden';
         card.style.textOverflow = 'ellipsis';
         card.style.whiteSpace = 'nowrap';
@@ -624,10 +624,10 @@ function renderDayTimeline() {
 
         card.style.top = `${topPx}px`;
         card.style.height = `${Math.max(heightPx, 24)}px`;
-        
+
         const shareIcon = (evt.sharedGroupIds && evt.sharedGroupIds.length > 0) || evt.ownerId ? '👥 ' : '';
         const icon = evt.isImportant ? '' : '';
-        
+
         card.innerHTML = `
             <strong>${shareIcon}${icon}${evt.title}</strong> (${evt.startTime}-${evt.endTime})
             <div class="event-card-resize-handle"></div>
@@ -785,7 +785,7 @@ function renderWeekTimeline() {
         dayEvents.forEach(evt => {
             const card = document.createElement('div');
             card.className = `event-card ${evt.isImportant ? 'important-event' : ''}`;
-            
+
             card.style.overflow = 'hidden';
             card.style.textOverflow = 'ellipsis';
             card.style.whiteSpace = 'nowrap';
@@ -916,7 +916,7 @@ function renderMonthCalendar() {
     const isMonStart = state.settings.weekStart === 'mon';
     const startOfMonth = state.currentDate.startOf('month');
     const daysInMonth = state.currentDate.daysInMonth();
-    
+
     let startDayIndex = startOfMonth.day();
     if (isMonStart) startDayIndex = (startDayIndex === 0) ? 6 : startDayIndex - 1;
 
@@ -962,7 +962,7 @@ function renderMonthCalendar() {
             const isMultiDay = evt.startDate && evt.endDate && evt.startDate !== evt.endDate;
             const evtLabel = document.createElement('div');
             evtLabel.className = `cell-event ${evt.isImportant ? 'important-event' : ''}`;
-            
+
             evtLabel.style.whiteSpace = 'nowrap';
             evtLabel.style.overflow = 'hidden';
             evtLabel.style.textOverflow = 'ellipsis';
@@ -987,7 +987,7 @@ function renderMonthCalendar() {
             }
 
             evtLabel.textContent = displayTitle;
-            
+
             evtLabel.addEventListener('click', (e) => {
                 e.stopPropagation();
                 openEventModal(evt);
@@ -1065,7 +1065,7 @@ function renderDetailedList() {
     filtered.forEach(evt => {
         const item = document.createElement('div');
         item.className = `detailed-event-card ${evt.completed ? 'is-completed' : ''}`;
-        
+
         const startD = evt.startDate || evt.date;
         const endD = evt.endDate || evt.date;
 
@@ -1073,7 +1073,7 @@ function renderDetailedList() {
         const endObj = dayjs(endD);
 
         const isSameDay = startD === endD;
-        const dateDisplay = isSameDay 
+        const dateDisplay = isSameDay
             ? `${startObj.format('YYYY/MM/DD')} (${getJapaneseDayOfWeek(startObj)})`
             : `${startObj.format('MM/DD')}(${getJapaneseDayOfWeek(startObj)}) 〜 ${endObj.format('MM/DD')}(${getJapaneseDayOfWeek(endObj)})`;
 
@@ -1172,7 +1172,7 @@ function copyFriendInviteLink() {
     }
 
     const inviteUrl = `${window.location.origin}${window.location.pathname}?add_friend=${encodeURIComponent(state.profile.userId)}`;
-    
+
     if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(inviteUrl).then(() => {
             showToast('📋 招待リンクをコピーしました！友達に共有してください');
@@ -1446,7 +1446,7 @@ function renderCreateGroupFriendsSelect() {
     const select = document.createElement('select');
     select.className = 'select-box';
     select.style.cssText = 'flex: 1; font-size: 0.8rem; padding: 4px 8px;';
-    select.innerHTML = '<option value="">フレンドを選択して追加...</option>' + 
+    select.innerHTML = '<option value="">フレンドを選択して追加...</option>' +
         friendIds.map(fId => `<option value="${fId}">${state.friends[fId]} (${fId})</option>`).join('');
 
     const addBtn = document.createElement('button');
@@ -1601,8 +1601,8 @@ function deleteEventFromModal() {
     }
 
     // 共有グループの予定であれば Firebase クラウド上からも削除
-    const sharedGroups = typeof getSharedGroupIds === 'function' 
-        ? getSharedGroupIds(targetEvt) 
+    const sharedGroups = typeof getSharedGroupIds === 'function'
+        ? getSharedGroupIds(targetEvt)
         : (targetEvt.sharedGroupIds || []);
 
     if (isFirebaseReady && sharedGroups.length > 0) {
@@ -1658,8 +1658,8 @@ function listenToGroupEvents(groupId) {
             const isMyEvent = currentUserId && e.ownerId === currentUserId;
             if (isMyEvent) return true; // 自分の作成予定は保護
 
-            const sharedGroups = Array.isArray(e.sharedGroupIds) 
-                ? e.sharedGroupIds 
+            const sharedGroups = Array.isArray(e.sharedGroupIds)
+                ? e.sharedGroupIds
                 : Object.values(e.sharedGroupIds || {});
 
             // 該当グループの共有予定で、クラウドから消えていれば削除(false)
@@ -1748,7 +1748,7 @@ function renderGroupDetailView(container) {
                 const item = document.createElement('div');
                 item.className = 'detailed-event-card';
                 item.style.cssText = 'margin-bottom:8px; display:flex; align-items:center; justify-space-between; padding:8px 12px; cursor:pointer;';
-                
+
                 const startD = evt.startDate || evt.date;
                 const endD = evt.endDate || evt.date;
                 const isSameDay = startD === endD;
@@ -1815,7 +1815,7 @@ function renderGroupDetailView(container) {
         } else {
             const inviteRow = document.createElement('div');
             inviteRow.style.cssText = 'display:flex; gap:6px;';
-            
+
             let options = unaddedFriends.map(fId => `<option value="${fId}">${state.friends[fId]} (${fId})</option>`).join('');
             inviteRow.innerHTML = `
                 <select class="select-box invite-friend-select" style="flex:1; font-size:0.75rem; padding:4px;">
@@ -1842,7 +1842,7 @@ function renderGroupDetailView(container) {
 
     } else if (state.groupSubTab === 'share') {
         const myEvents = state.events.filter(e => !e.ownerId || e.ownerId === state.profile.userId);
-        
+
         if (myEvents.length === 0) {
             contentArea.innerHTML = '<div style="text-align:center; padding:20px; color:#94a3b8; font-size:0.85rem;">共有可能な自分の予定がありません</div>';
         } else {
@@ -1868,8 +1868,8 @@ function renderGroupDetailView(container) {
                         <div style="font-size:0.75rem; color:#64748b;">📅 ${startD} (${timeStr})</div>
                     </div>
                     <div>
-                        ${isShared 
-                            ? '<button type="button" class="btn btn-danger btn-small share-this-evt-btn" style="font-size:0.75rem; padding:4px 8px;">🔓 共有解除</button>' 
+                        ${isShared
+                            ? '<button type="button" class="btn btn-danger btn-small share-this-evt-btn" style="font-size:0.75rem; padding:4px 8px;">🔓 共有解除</button>'
                             : '<button type="button" class="btn btn-primary btn-small share-this-evt-btn" style="font-size:0.75rem; padding:4px 8px;">🔗 共有</button>'}
                     </div>
                 `;
@@ -1897,7 +1897,7 @@ function renderGroupDetailView(container) {
 
                             if (typeof syncSharedEventToCloud === 'function') syncSharedEventToCloud(evt);
                             if (typeof notifyGroupMembersForEvent === 'function') notifyGroupMembersForEvent([grp.id], evt);
-                            
+
                             showToast(`「${evt.title}」をグループに共有しました`);
                         }
 
@@ -2059,7 +2059,7 @@ function openFavDetail() {
         favDetailEl.id = 'settingsFavDetail';
         favDetailEl.className = 'settings-card';
         favDetailEl.style.cssText = 'padding: 16px; background: #ffffff; border-radius: 12px; margin-bottom: 16px;';
-        
+
         // settingsMainCard の親要素に追加
         if (settingsMain && settingsMain.parentElement) {
             settingsMain.parentElement.appendChild(favDetailEl);
@@ -2517,7 +2517,7 @@ function applyFavoriteTemplate(favId) {
 
     document.getElementById('eventTitleInput').value = fav.title;
     document.getElementById('eventImportantInput').checked = !!fav.isImportant;
-    
+
     const allDayCb = document.getElementById('eventAllDayInput');
     if (allDayCb) allDayCb.checked = !!fav.isAllDay;
 
@@ -2608,7 +2608,7 @@ function openEventModal(evt = null) {
         if (lockedCheckbox) lockedCheckbox.checked = !!evt.isLocked;
         if (startDEl) startDEl.value = evt.startDate || evt.date || state.currentDate.format('YYYY-MM-DD');
         if (endDEl) endDEl.value = evt.endDate || evt.date || state.currentDate.format('YYYY-MM-DD');
-        
+
         if (allDayCheckbox) allDayCheckbox.checked = !!evt.isAllDay;
         if (repeatCheckbox) repeatCheckbox.checked = false;
         if (weekdayContainer) weekdayContainer.classList.add('hidden');
@@ -2629,7 +2629,7 @@ function openEventModal(evt = null) {
         if (titleEl) titleEl.value = '';
         if (impEl) impEl.checked = false;
         if (lockedCheckbox) lockedCheckbox.checked = false;
-        
+
         const currentStr = state.currentDate.format('YYYY-MM-DD');
         if (startDEl) startDEl.value = currentStr;
         if (endDEl) endDEl.value = currentStr;
@@ -2720,7 +2720,7 @@ function openShareGroupModal() {
         const grp = state.groups[gId];
         const label = document.createElement('label');
         label.className = 'share-group-item';
-        
+
         const isChecked = currentSharedGroupIds.includes(gId);
         label.innerHTML = `
             <input type="checkbox" value="${gId}" class="share-grp-cb" ${isChecked ? 'checked' : ''}>
@@ -2881,7 +2881,7 @@ function saveEventFromModal() {
 
     if (isRepeat) {
         const selectedWeekdays = Array.from(document.querySelectorAll('.weekday-selector input[type="checkbox"]:checked')).map(cb => Number(cb.value));
-        
+
         if (selectedWeekdays.length === 0) {
             showToast('⚠️ 繰り返す曜日を少なくとも1つ選択してください');
             return;
@@ -2893,7 +2893,7 @@ function saveEventFromModal() {
 
         while (currDay.isBefore(endDay) || currDay.isSame(endDay, 'day')) {
             const dayOfWeek = currDay.day();
-            
+
             if (selectedWeekdays.includes(dayOfWeek)) {
                 const dayStr = currDay.format('YYYY-MM-DD');
                 const newEvt = {
@@ -2997,8 +2997,8 @@ function unshareEventFromModal() {
     const evt = state.events.find(e => e.id === id);
     if (!evt) return;
 
-    const sharedGroups = Array.isArray(evt.sharedGroupIds) 
-        ? evt.sharedGroupIds 
+    const sharedGroups = Array.isArray(evt.sharedGroupIds)
+        ? evt.sharedGroupIds
         : Object.values(evt.sharedGroupIds || {});
 
     // Firebase上のデータを確実に物理削除
@@ -3053,6 +3053,7 @@ function unshareAllGroupEvents(eventId) {
     renderAllViews();
     showToast('🔓 共有を解除しました');
 }
+// ユーザーアイコン削除（解除）ボタンのイベント登録
 // アイコン削除（解除）の共通処理関数
 function handleRemoveUserIcon() {
     if (!confirm('アイコンを解除して初期状態に戻しますか？')) return;
@@ -3106,3 +3107,36 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 });
+// 予定追加・編集モーダルの開閉時に右下プラスボタンを非表示/表示する処理
+(function() {
+    const toggleFabVisibility = (visible) => {
+        const fabBtn = document.getElementById('addEventBtn') || document.querySelector('.fab-btn');
+        if (!fabBtn) return;
+
+        if (visible) {
+            // 表示: インラインスタイルを削除して既存のCSS表示を有効化
+            fabBtn.style.removeProperty('display');
+        } else {
+            // 非表示: !important 属性付きで非表示に変更
+            fabBtn.style.setProperty('display', 'none', 'important');
+        }
+    };
+
+    // openEventModal 実行時にボタンを非表示
+    if (typeof openEventModal === 'function') {
+        const originalOpenModal = openEventModal;
+        openEventModal = function(...args) {
+            originalOpenModal.apply(this, args);
+            toggleFabVisibility(false);
+        };
+    }
+
+    // closeEventModal 実行時にボタンを再表示
+    if (typeof closeEventModal === 'function') {
+        const originalCloseModal = closeEventModal;
+        closeEventModal = function(...args) {
+            originalCloseModal.apply(this, args);
+            toggleFabVisibility(true);
+        };
+    }
+})();
