@@ -3,6 +3,7 @@
  */
 
 dayjs.locale('ja');
+
 // 共有グループIDを安全に配列化して取得する共通関数
 function getSharedGroupIds(evt) {
     if (!evt || !evt.sharedGroupIds) return [];
@@ -10,6 +11,7 @@ function getSharedGroupIds(evt) {
         ? evt.sharedGroupIds
         : Object.values(evt.sharedGroupIds);
 }
+
 const firebaseConfig = {
     apiKey: "AIzaSyDOJMMM9mlLPv-v-FY38NgyEn197HfuNz8",
     authDomain: "project-3274200529122638548.firebaseapp.com",
@@ -54,7 +56,7 @@ window.lastNotifCheck = Date.now();
 document.addEventListener('DOMContentLoaded', () => {
     dayjs.locale('ja');
 
-    registerInlineServiceWorker();
+    registerServiceWorker();
     initFirebase();
     loadLocalData();
     applyTheme();
@@ -93,52 +95,46 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
-function registerInlineServiceWorker() {
-  if (!('serviceWorker' in navigator)) return;
+// blob URLではなく独立した sw.js を登録するように修正
+function registerServiceWorker() {
+    if (!('serviceWorker' in navigator)) return;
 
-  const swCode = `
-    self.addEventListener('install', (e) => self.skipWaiting());
-    self.addEventListener('activate', (e) => e.waitUntil(clients.claim()));
-    self.addEventListener('push', (e) => {
-      const data = e.data ? e.data.json() : {};
-      self.registration.showNotification(data.title || '通知', {
-        body: data.body || '',
-        icon: data.icon || ''
-      });
-    });
-  `;
-
-  const blob = new Blob([swCode], { type: 'application/javascript' });
-  const blobUrl = URL.createObjectURL(blob);
-
-  navigator.serviceWorker.register(blobUrl)
-    .then((reg) => console.log('SW 登録成功:', reg))
-    .catch((err) => console.error('SW 登録失敗:', err));
+    navigator.serviceWorker.register('./sw.js')
+        .then((reg) => console.log('SW 登録成功:', reg))
+        .catch((err) => console.error('SW 登録失敗:', err));
 }
+
 function openEventModalForFavorite(eventData) {
-  // HTML側にある保存ボタンのIDに合わせて取得
-  const saveBtn = document.getElementById('saveModalBtn');
-  if (!saveBtn) {
-    console.error('saveModalBtn が見つかりません');
-    return;
-  }
+    const saveBtn = document.getElementById('saveModalBtn');
+    if (!saveBtn) {
+        console.error('saveModalBtn が見つかりません');
+        return;
+    }
 
-  saveBtn.onclick = function () {
-    // イベント保存処理
-  };
+    saveBtn.onclick = function () {
+        // イベント保存処理
+    };
 }
-
-// DOM構築完了後に実行
-document.addEventListener('DOMContentLoaded', registerInlineServiceWorker);
 
 function initFirebase() {
     try {
         if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
         isFirebaseReady = true;
-        syncAllMyGroups(); // ← ここで呼ぶ
+        syncAllMyGroups();
     } catch (e) {
         console.warn('Firebase connection standby');
     }
+}
+
+function syncAllMyGroups() {
+    if (!isFirebaseReady || !state.profile.userId) return;
+    const db = firebase.database();
+    db.ref('userGroups/' + state.profile.userId).once('value', (snapshot) => {
+        const val = snapshot.val() || {};
+        Object.keys(val).forEach(gId => {
+            listenToGroupEvents(gId);
+        });
+    });
 }
 
 function loadLocalData() {
@@ -585,7 +581,6 @@ function renderDayTimeline() {
     if (dateDisp) {
         dateDisp.textContent = `${state.currentDate.format('YYYY/MM/DD')}(${jaDay})`;
 
-        // 土曜日は青、日曜日は赤でスタイル適用
         const dayOfWeek = state.currentDate.day();
         dateDisp.classList.remove('sat', 'sun');
         if (dayOfWeek === 6) {
@@ -608,7 +603,7 @@ function renderDayTimeline() {
 
     todayEvents.forEach(evt => {
         const card = document.createElement('div');
-       card.className = `event-card ${evt.isImportant ? 'important-event' : ''} ${evt.isLocked ? 'is-locked' : ''}`;
+        card.className = `event-card ${evt.isImportant ? 'important-event' : ''} ${evt.isLocked ? 'is-locked' : ''}`;
 
         card.style.overflow = 'hidden';
         card.style.textOverflow = 'ellipsis';
@@ -623,7 +618,6 @@ function renderDayTimeline() {
         const [sH, sM] = (evt.startTime || '00:00').split(':').map(Number);
         let [eH, eM] = (evt.endTime || '01:00').split(':').map(Number);
 
-        // 日跨ぎ処理（深夜〜翌日）: s.endTime < s.startTime の場合は翌日扱いで24時間を加算し1本の連続スケジュールとして描画
         if (evt.endTime && evt.startTime && evt.endTime < evt.startTime) {
             eH += 24;
         }
@@ -635,10 +629,9 @@ function renderDayTimeline() {
         card.style.height = `${Math.max(heightPx, 24)}px`;
 
         const shareIcon = (evt.sharedGroupIds && evt.sharedGroupIds.length > 0) || evt.ownerId ? '👥 ' : '';
-        const icon = evt.isImportant ? '' : '';
 
         card.innerHTML = `
-            <strong>${shareIcon}${icon}${evt.title}</strong> (${evt.startTime}-${evt.endTime})
+            <strong>${shareIcon}${evt.title}</strong> (${evt.startTime}-${evt.endTime})
             <div class="event-card-resize-handle"></div>
         `;
 
@@ -658,8 +651,8 @@ function setupEventDragAndResize(card, evt) {
     if (evt.ownerId && state.profile.userId && evt.ownerId !== state.profile.userId) {
         return;
     }
-        if (evt.isLocked) {
-        return; // 固定中はドラッグ・リサイズを禁止
+    if (evt.isLocked) {
+        return;
     }
 
     let startY, startTop, startHeight;
@@ -805,7 +798,6 @@ function renderWeekTimeline() {
             const [sH, sM] = (evt.startTime || '00:00').split(':').map(Number);
             let [eH, eM] = (evt.endTime || '01:00').split(':').map(Number);
 
-            // 日跨ぎ処理（週ビューでの計算補正）
             if (evt.endTime && evt.startTime && evt.endTime < evt.startTime) {
                 eH += 24;
             }
@@ -868,11 +860,6 @@ function openMonthPickerModal() {
         renderMonthPickerContent();
     };
 }
-/////////
-
-
-
-
 
 function renderMonthPickerContent() {
     document.getElementById('pickerYearDisplay').textContent = `${state.pickerYear}年`;
@@ -985,11 +972,6 @@ function renderMonthCalendar() {
             }
 
             let prefix = '';
-            if (evt.sharedGroupIds || evt.ownerId) prefix += '';
-            if (evt.isImportant) prefix += '';
-            if (evt.isAllDay) prefix += '';
-            else if (isMultiDay) prefix += '';
-
             let displayTitle = prefix + evt.title;
             if (displayTitle.length > 4) {
                 displayTitle = displayTitle.substring(0, 5) + '…';
@@ -1235,75 +1217,75 @@ function listenToFirebaseRealtime() {
     });
 
     db.ref('userGroups/' + myId).on('value', (snapshot) => {
-    const val = snapshot.val() || {};
-    state.groups = {};
-    const groupIds = Object.keys(val);
+        const val = snapshot.val() || {};
+        state.groups = {};
+        const groupIds = Object.keys(val);
 
-    if (groupIds.length === 0) {
-        renderGroupSection();
-        return;
-    }
+        if (groupIds.length === 0) {
+            renderGroupSection();
+            return;
+        }
 
-    groupIds.forEach(gId => {
-        db.ref('groups/' + gId).on('value', (gSnap) => {
-            if (gSnap.exists()) {
-                state.groups[gId] = gSnap.val();
-                renderGroupSection();
-            }
-        });
-
-        // 共有予定のリアルタイム同期 (追加・更新・自動削除対応)
-        db.ref('groupEvents/' + gId).on('value', (evtSnap) => {
-            const cloudEvents = evtSnap.val() || {};
-            const cloudEventIds = Object.keys(cloudEvents);
-            let hasChanges = false;
-
-            // ① クラウド側で削除・共有解除された予定（他人が所有者）を自分のローカルから自動削除
-            const initialCount = state.events.length;
-            state.events = state.events.filter(e => {
-                // 自分が作成した予定は自分のカレンダーに保持
-                if (e.ownerId && e.ownerId !== myId) {
-                    const sharedGroups = getSharedGroupIds(e);
-                    // このグループに共有されていたがクラウドから消えている場合はローカルから削除
-                    if (sharedGroups.includes(gId) && !cloudEventIds.includes(e.id)) {
-                        return false;
-                    }
-                }
-                return true;
-            });
-
-            if (state.events.length !== initialCount) {
-                hasChanges = true;
-            }
-
-            // ② クラウドの最新予定を追加・更新
-            cloudEventIds.forEach(evtId => {
-                const cloudEvt = cloudEvents[evtId];
-                if (cloudEvt.ownerId !== myId) {
-                    const localIdx = state.events.findIndex(e => e.id === evtId);
-                    if (localIdx >= 0) {
-                        state.events[localIdx] = {
-                            ...state.events[localIdx],
-                            ...cloudEvt
-                        };
-                        hasChanges = true;
-                    } else {
-                        state.events.push({
-                            ...cloudEvt,
-                            completed: false
-                        });
-                        hasChanges = true;
-                    }
+        groupIds.forEach(gId => {
+            db.ref('groups/' + gId).on('value', (gSnap) => {
+                if (gSnap.exists()) {
+                    state.groups[gId] = gSnap.val();
+                    renderGroupSection();
+                } else {
+                    // クラウド上でグループが削除された場合の同期
+                    delete state.groups[gId];
+                    if (state.selectedGroupId === gId) state.selectedGroupId = null;
+                    renderGroupSection();
                 }
             });
 
-            if (hasChanges) {
-                saveData();
-                renderAllViews();
-            }
+            db.ref('groupEvents/' + gId).on('value', (evtSnap) => {
+                const cloudEvents = evtSnap.val() || {};
+                const cloudEventIds = Object.keys(cloudEvents);
+                let hasChanges = false;
+
+                const initialCount = state.events.length;
+                state.events = state.events.filter(e => {
+                    if (e.ownerId && e.ownerId !== myId) {
+                        const sharedGroups = getSharedGroupIds(e);
+                        if (sharedGroups.includes(gId) && !cloudEventIds.includes(e.id)) {
+                            return false;
+                        }
+                    }
+                    return true;
+                });
+
+                if (state.events.length !== initialCount) {
+                    hasChanges = true;
+                }
+
+                cloudEventIds.forEach(evtId => {
+                    const cloudEvt = cloudEvents[evtId];
+                    if (cloudEvt.ownerId !== myId) {
+                        const localIdx = state.events.findIndex(e => e.id === evtId);
+                        if (localIdx >= 0) {
+                            state.events[localIdx] = {
+                                ...state.events[localIdx],
+                                ...cloudEvt
+                            };
+                            hasChanges = true;
+                        } else {
+                            state.events.push({
+                                ...cloudEvt,
+                                completed: false
+                            });
+                            hasChanges = true;
+                        }
+                    }
+                });
+
+                if (hasChanges) {
+                    saveData();
+                    renderAllViews();
+                }
+            });
         });
     });
-});
 
     db.ref('userNotifications/' + myId).on('child_added', (snapshot) => {
         const notif = snapshot.val();
@@ -1421,22 +1403,6 @@ function renderFriendsList() {
         container.appendChild(item);
     });
 }
-/////
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 function renderCreateGroupFriendsSelect() {
     const container = document.getElementById('createGroupFriendsSelect');
@@ -1572,7 +1538,7 @@ function renderMyGroupsList() {
         const memberTagsHtml = Object.values(grp.members || {}).map(mName => `<span class="member-tag">👤 ${mName}</span>`).join('');
 
         card.innerHTML = `
-            <div class="group-card-header" style="display:flex; justify-content:space-between; align-items:center;">
+            <div class="group-card-header" style="display:flex; justify-space-between; align-items:center;">
                 <strong>👨‍👩‍👧‍👦 ${grp.name}</strong>
                 <span class="badge badge-primary" style="font-size:0.7rem;">詳細・共有 ▶</span>
             </div>
@@ -1609,7 +1575,6 @@ function deleteEventFromModal() {
         recordStateForUndo('予定を削除しました');
     }
 
-    // 共有グループの予定であれば Firebase クラウド上からも削除
     const sharedGroups = typeof getSharedGroupIds === 'function'
         ? getSharedGroupIds(targetEvt)
         : (targetEvt.sharedGroupIds || []);
@@ -1621,7 +1586,6 @@ function deleteEventFromModal() {
         });
     }
 
-    // ローカル配列から削除
     state.events.splice(evtIndex, 1);
 
     saveData();
@@ -1629,21 +1593,19 @@ function deleteEventFromModal() {
     renderAllViews();
     showToast('🗑️ 予定を削除しました');
 }
+
 function unshareGroupEvent(eventId, groupId) {
     const evt = state.events.find(e => e.id === eventId);
     if (!evt) return;
     if (!confirm(`「${evt.title}」の共有をこのグループで解除しますか？`)) return;
 
-    // Firebase上の共有データを削除（他メンバー側の同期イベントが自動発火）
     if (isFirebaseReady) {
         firebase.database().ref(`groupEvents/${groupId}/${eventId}`).remove();
     }
 
-    // 自分の共有グループIDリストを更新
     const remainingGroups = getSharedGroupIds(evt).filter(id => id !== groupId);
     evt.sharedGroupIds = remainingGroups;
 
-    // 他人が所有者の共有予定で、自分がどの共有グループにも属さなくなった場合は削除
     if (evt.ownerId && evt.ownerId !== state.profile.userId && remainingGroups.length === 0) {
         state.events = state.events.filter(e => e.id !== eventId);
     }
@@ -1652,7 +1614,7 @@ function unshareGroupEvent(eventId, groupId) {
     renderAllViews();
     showToast('🔓 共有を解除しました');
 }
-// グループ共有予定のリアルタイム同期（削除・解除の同期対応）
+
 function listenToGroupEvents(groupId) {
     if (!isFirebaseReady || !groupId) return;
     const ref = firebase.database().ref(`groupEvents/${groupId}`);
@@ -1662,16 +1624,11 @@ function listenToGroupEvents(groupId) {
         const cloudEventIds = Object.keys(cloudEvents);
         const currentUserId = state.profile ? state.profile.userId : null;
 
-        // 他人の予定で、Firebase上に存在しないものを全削除
         state.events = state.events.filter(e => {
             const isMyEvent = currentUserId && e.ownerId === currentUserId;
-            if (isMyEvent) return true; // 自分の作成予定は保護
+            if (isMyEvent) return true;
 
-            const sharedGroups = Array.isArray(e.sharedGroupIds)
-                ? e.sharedGroupIds
-                : Object.values(e.sharedGroupIds || {});
-
-            // 該当グループの共有予定で、クラウドから消えていれば削除(false)
+            const sharedGroups = getSharedGroupIds(e);
             if (sharedGroups.includes(groupId)) {
                 return cloudEventIds.includes(e.id);
             }
@@ -1679,7 +1636,6 @@ function listenToGroupEvents(groupId) {
             return true;
         });
 
-        // クラウドの最新データを反映
         Object.values(cloudEvents).forEach(cloudEvt => {
             const idx = state.events.findIndex(e => e.id === cloudEvt.id);
             if (idx >= 0) {
@@ -1693,6 +1649,55 @@ function listenToGroupEvents(groupId) {
         renderAllViews();
     });
 }
+
+// メンバーをグループから削除または脱退する処理
+function removeMemberFromGroup(groupId, memberId) {
+    if (!isFirebaseReady) return;
+    const db = firebase.database();
+    const grp = state.groups[groupId];
+    const memberName = (grp && grp.members) ? grp.members[memberId] : memberId;
+
+    db.ref(`groups/${groupId}/members/${memberId}`).remove();
+    db.ref(`userGroups/${memberId}/${groupId}`).remove();
+
+    if (memberId === state.profile.userId) {
+        state.selectedGroupId = null;
+        if (state.groups[groupId]) delete state.groups[groupId];
+        showToast(`グループ「${grp ? grp.name : ''}」を脱退しました`);
+    } else {
+        showToast(`「${memberName}」さんをグループから削除しました`);
+    }
+
+    renderGroupSection();
+    renderAllViews();
+}
+
+// グループを完全に削除する処理（メンバー情報・イベントも消去）
+function deleteGroup(groupId) {
+    if (!isFirebaseReady) return;
+    const db = firebase.database();
+    const grp = state.groups[groupId];
+    if (!grp) return;
+
+    const memberIds = Object.keys(grp.members || {});
+
+    // 全メンバーの userGroups 設定から該当グループを削除
+    memberIds.forEach(mId => {
+        db.ref(`userGroups/${mId}/${groupId}`).remove();
+    });
+
+    // グループ本体と共有予定を削除
+    db.ref(`groups/${groupId}`).remove();
+    db.ref(`groupEvents/${groupId}`).remove();
+
+    delete state.groups[groupId];
+    state.selectedGroupId = null;
+
+    showToast(`グループ「${grp.name}」を削除しました`);
+    renderGroupSection();
+    renderAllViews();
+}
+
 function renderGroupDetailView(container) {
     const grp = state.groups[state.selectedGroupId];
     if (!grp) {
@@ -1701,7 +1706,6 @@ function renderGroupDetailView(container) {
         return;
     }
 
-    // 共有ID配列を安全に取得するヘルパー
     const getGroupIds = (e) => {
         if (!e || !e.sharedGroupIds) return [];
         return Array.isArray(e.sharedGroupIds) ? e.sharedGroupIds : Object.values(e.sharedGroupIds);
@@ -1756,7 +1760,7 @@ function renderGroupDetailView(container) {
             groupEvents.forEach(evt => {
                 const item = document.createElement('div');
                 item.className = 'detailed-event-card';
-                item.style.cssText = 'margin-bottom:8px; display:flex; align-items:center; justify-space-between; padding:8px 12px; cursor:pointer;';
+                item.style.cssText = 'margin-bottom:8px; display:flex; align-items:center; justify-content:space-between; padding:8px 12px; cursor:pointer;';
 
                 const startD = evt.startDate || evt.date;
                 const endD = evt.endDate || evt.date;
@@ -1802,17 +1806,49 @@ function renderGroupDetailView(container) {
             });
         }
     } else if (state.groupSubTab === 'members') {
+        const myId = state.profile.userId;
+        const isOwner = grp.ownerId === myId;
+
         const memberListDiv = document.createElement('div');
         memberListDiv.style.marginBottom = '16px';
-        memberListDiv.innerHTML = '<div style="font-size:0.8rem; font-weight:bold; color:#475569; margin-bottom:6px;">現在のメンバー:</div>';
+        memberListDiv.innerHTML = '<div style="font-size:0.8rem; font-weight:bold; color:#475569; margin-bottom:8px;">現在のメンバー:</div>';
 
         const tagsDiv = document.createElement('div');
-        tagsDiv.className = 'group-members-tags';
-        Object.values(grp.members || {}).forEach(mName => {
-            tagsDiv.innerHTML += `<span class="member-tag">👤 ${mName}</span>`;
+        tagsDiv.style.cssText = 'display: flex; flex-direction: column; gap: 6px;';
+
+        Object.entries(grp.members || {}).forEach(([mId, mName]) => {
+            const memberRow = document.createElement('div');
+            memberRow.style.cssText = 'display: flex; justify-content: space-between; align-items: center; background: #f8fafc; padding: 6px 10px; border-radius: 6px; border: 1px solid #e2e8f0; font-size: 0.8rem;';
+
+            const isMemberOwner = mId === grp.ownerId;
+            const isMe = mId === myId;
+
+            let badgeHtml = isMemberOwner ? '<span class="badge badge-primary" style="font-size:0.65rem; margin-left:4px;">オーナー</span>' : '';
+            let nameHtml = `<span>👤 <strong>${mName}</strong> ${badgeHtml} <span style="font-size:0.7rem; color:#94a3b8;">(${mId})</span></span>`;
+
+            let actionBtnHtml = '';
+            if (isOwner && !isMemberOwner) {
+                actionBtnHtml = `<button type="button" class="btn btn-danger btn-small remove-mem-btn" style="font-size:0.7rem; padding:2px 6px;">削除</button>`;
+            } else if (!isOwner && isMe) {
+                actionBtnHtml = `<button type="button" class="btn btn-danger btn-small remove-mem-btn" style="font-size:0.7rem; padding:2px 6px;">脱退</button>`;
+            }
+
+            memberRow.innerHTML = nameHtml + actionBtnHtml;
+
+            const removeBtn = memberRow.querySelector('.remove-mem-btn');
+            if (removeBtn) {
+                removeBtn.onclick = () => {
+                    const confirmMsg = isMe ? 'このグループを脱退しますか？' : `「${mName}」さんをグループから削除しますか？`;
+                    if (!confirm(confirmMsg)) return;
+                    removeMemberFromGroup(grp.id, mId);
+                };
+            }
+
+            tagsDiv.appendChild(memberRow);
         });
         memberListDiv.appendChild(tagsDiv);
 
+        // フレンド招待エリア
         const inviteDiv = document.createElement('div');
         inviteDiv.style.cssText = 'margin-top: 14px; padding-top: 10px; border-top: 1px dashed #cbd5e1;';
         inviteDiv.innerHTML = '<div style="font-size:0.8rem; font-weight:bold; color:#475569; margin-bottom:6px;">フレンドをグループに招待:</div>';
@@ -1831,7 +1867,7 @@ function renderGroupDetailView(container) {
                     <option value="">フレンドを選択...</option>
                     ${options}
                 </select>
-                <button class="btn btn-primary btn-small do-invite-btn" style="font-size:0.75rem; padding:4px 8px;">招待送信</button>
+                <button type="button" class="btn btn-primary btn-small do-invite-btn" style="font-size:0.75rem; padding:4px 8px;">招待送信</button>
             `;
 
             inviteRow.querySelector('.do-invite-btn').onclick = () => {
@@ -1846,8 +1882,35 @@ function renderGroupDetailView(container) {
             inviteDiv.appendChild(inviteRow);
         }
 
+        // グループ削除/脱退エリア (メンバー管理タブ下部)
+        const deleteGroupDiv = document.createElement('div');
+        deleteGroupDiv.style.cssText = 'margin-top: 20px; padding-top: 14px; border-top: 1px solid #fee2e2; text-align: center;';
+
+        if (isOwner) {
+            deleteGroupDiv.innerHTML = `
+                <button type="button" class="btn btn-danger btn-small delete-group-btn" style="width: 100%; font-size:0.8rem; padding: 8px;">
+                    🗑️ グループを削除する
+                </button>
+            `;
+            deleteGroupDiv.querySelector('.delete-group-btn').onclick = () => {
+                if (!confirm(`グループ「${grp.name}」を削除しますか？\nグループの共有データ・メンバーがすべて削除されます。`)) return;
+                deleteGroup(grp.id);
+            };
+        } else {
+            deleteGroupDiv.innerHTML = `
+                <button type="button" class="btn btn-danger btn-small leave-group-btn" style="width: 100%; font-size:0.8rem; padding: 8px;">
+                    🚪 グループを脱退する
+                </button>
+            `;
+            deleteGroupDiv.querySelector('.leave-group-btn').onclick = () => {
+                if (!confirm(`グループ「${grp.name}」を脱退しますか？`)) return;
+                removeMemberFromGroup(grp.id, myId);
+            };
+        }
+
         contentArea.appendChild(memberListDiv);
         contentArea.appendChild(inviteDiv);
+        contentArea.appendChild(deleteGroupDiv);
 
     } else if (state.groupSubTab === 'share') {
         const myEvents = state.events.filter(e => !e.ownerId || e.ownerId === state.profile.userId);
@@ -1905,7 +1968,6 @@ function renderGroupDetailView(container) {
                             evt.ownerName = evt.ownerName || state.profile.userName;
 
                             if (typeof syncSharedEventToCloud === 'function') syncSharedEventToCloud(evt);
-                            if (typeof notifyGroupMembersForEvent === 'function') notifyGroupMembersForEvent([grp.id], evt);
 
                             showToast(`「${evt.title}」をグループに共有しました`);
                         }
@@ -2014,7 +2076,6 @@ function initSettingsView() {
         });
     }
 
-    // 階層型設定画面: 「お気に入り設定」のタップで詳細画面へ遷移
     const openFavDetailBtn = document.getElementById('openFavDetailBtn');
     if (openFavDetailBtn) {
         openFavDetailBtn.addEventListener('click', openFavDetail);
@@ -2056,8 +2117,6 @@ function initSettingsView() {
     }
 }
 
-// 階層型設定画面のお気に入り詳細表示（openFavDetail）
-// 階層型設定画面のお気に入り詳細表示（openFavDetail）
 function openFavDetail() {
     const settingsMain = document.getElementById('settingsMainCard');
     if (settingsMain) settingsMain.classList.add('hidden');
@@ -2069,7 +2128,6 @@ function openFavDetail() {
         favDetailEl.className = 'settings-card';
         favDetailEl.style.cssText = 'padding: 16px; background: #ffffff; border-radius: 12px; margin-bottom: 16px;';
 
-        // settingsMainCard の親要素に追加
         if (settingsMain && settingsMain.parentElement) {
             settingsMain.parentElement.appendChild(favDetailEl);
         } else {
@@ -2081,7 +2139,6 @@ function openFavDetail() {
     renderFavoriteListDetail();
 }
 
-// Vanilla JSによるお気に入りCRUDとonchangeリアルタイム反映
 function renderFavoriteListDetail() {
     const favDetailEl = document.getElementById('settingsFavDetail');
     if (!favDetailEl) return;
@@ -2141,49 +2198,7 @@ function renderFavoriteListDetail() {
         container.appendChild(row);
     });
 }
-function openEventModalForFavorite(fav = null) {
-    // 予定入力モーダルをお気に入りデータで初期化して開く
-    openEventModal(fav ? { ...fav, startDate: dayjs().format('YYYY-MM-DD'), endDate: dayjs().format('YYYY-MM-DD') } : null);
 
-
-
-    // 保存ボタンの動作をお気に入り保存用に変更
-    saveBtn.onclick = () => {
-        const titleInput = document.getElementById('eventTitleInput');
-        const title = titleInput ? titleInput.value.trim() : '';
-
-        if (!title) {
-            if (titleInput) titleInput.style.borderColor = '#ef4444';
-            showToast('⚠️ タイトルを入力してください');
-            return;
-        }
-
-        const favObj = {
-            id: fav ? fav.id : 'fav_' + Date.now(),
-            title: title,
-            isImportant: document.getElementById('eventImportantInput').checked,
-            isAllDay: document.getElementById('eventAllDayInput').checked,
-            startTime: document.getElementById('eventStartInput').value,
-            endTime: document.getElementById('eventEndInput').value,
-            color: state.selectedColor,
-            notifications: JSON.parse(JSON.stringify(currentModalNotifications))
-        };
-
-        if (fav) {
-            const idx = state.favorites.findIndex(f => f.id === fav.id);
-            if (idx >= 0) state.favorites[idx] = favObj;
-        } else {
-            state.favorites.push(favObj);
-        }
-
-        saveData();
-        updateFavoriteDropdown();
-        closeEventModal();
-        renderFavoriteListDetail();
-        showToast(fav ? 'お気に入りを更新しました' : 'お気に入りに登録しました');
-
-    };
-}
 function renderSettingsColorPalette() {
     const colorContainer = document.getElementById('settingsColorList');
     if (!colorContainer) return;
@@ -2332,8 +2347,6 @@ function initModalEvents() {
     const cancelEventBtn = document.getElementById('cancelEventBtn');
     if (cancelEventBtn) cancelEventBtn.addEventListener('click', closeEventModal);
 
-
-
     const deleteEventBtn = document.getElementById('deleteEventBtn');
     if (deleteEventBtn) deleteEventBtn.addEventListener('click', deleteEventFromModal);
 
@@ -2401,7 +2414,7 @@ function initModalEvents() {
             document.getElementById('addColorModal').classList.add('hidden');
         });
     }
-   // 共有解除ボタンのイベント登録
+
     const unshareBtn = document.getElementById('unshareEventBtn');
     if (unshareBtn) {
         unshareBtn.addEventListener('click', () => {
@@ -2572,7 +2585,7 @@ function renderModalColorPalette(selectedColor) {
 }
 
 function clearModalErrors() {
-const fields = ['eventTitleInput', 'eventStartDateInput', 'eventEndDateInput', 'eventStartInput', 'eventEndInput'];
+    const fields = ['eventTitleInput', 'eventStartDateInput', 'eventEndDateInput', 'eventStartInput', 'eventEndInput'];
     fields.forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.borderColor = '';
@@ -2696,7 +2709,6 @@ function closeEventModal() {
     const modal = document.getElementById('eventModal');
     if (modal) modal.classList.add('hidden');
     state.currentEditingEvent = null;
-
 }
 
 function openShareGroupModal() {
@@ -2730,813 +2742,4 @@ function openShareGroupModal() {
         `;
         container.appendChild(label);
     });
-
-    document.getElementById('shareGroupModal').classList.remove('hidden');
-}
-
-function closeShareGroupModal() {
-    document.getElementById('shareGroupModal').classList.add('hidden');
-}
-
-function confirmShareEvent() {
-    const selectedGroupIds = Array.from(document.querySelectorAll('.share-grp-cb:checked')).map(cb => cb.value);
-
-    if (selectedGroupIds.length === 0) {
-        alert('共有先のグループを少なくとも1つ選択してください。');
-        return;
-    }
-
-    let evt = state.currentEditingEvent;
-    if (!evt) {
-        const title = document.getElementById('eventTitleInput').value.trim() || '無題の予定';
-        evt = {
-            id: 'evt_' + Date.now(),
-            title: title,
-            isImportant: document.getElementById('eventImportantInput').checked,
-            isAllDay: document.getElementById('eventAllDayInput').checked,
-            startDate: document.getElementById('eventStartDateInput').value,
-            endDate: document.getElementById('eventEndDateInput').value,
-            startTime: document.getElementById('eventStartInput').value,
-            endTime: document.getElementById('eventEndInput').value,
-            color: state.selectedColor,
-            notifications: JSON.parse(JSON.stringify(currentModalNotifications)),
-            completed: false
-        };
-        state.events.push(evt);
-    }
-
-    evt.ownerId = state.profile.userId;
-    evt.ownerName = state.profile.userName;
-    evt.sharedGroupIds = selectedGroupIds;
-
-    saveData();
-    syncSharedEventToCloud(evt);
-    notifyGroupMembersForEvent(selectedGroupIds, evt);
-
-    closeShareGroupModal();
-    closeEventModal();
-    renderAllViews();
-
-    showToast(`👥 ${selectedGroupIds.length}個のグループに予定を共有しました`);
-}
-
-function syncSharedEventToCloud(evt) {
-    if (!isFirebaseReady || !evt.sharedGroupIds) return;
-    const db = firebase.database();
-
-    const sharedData = {
-        id: evt.id,
-        ownerId: evt.ownerId || state.profile.userId,
-        ownerName: evt.ownerName || state.profile.userName,
-        title: evt.title,
-        isImportant: evt.isImportant,
-        isAllDay: evt.isAllDay,
-        startDate: evt.startDate,
-        endDate: evt.endDate,
-        startTime: evt.startTime,
-        endTime: evt.endTime,
-        color: evt.color,
-        sharedGroupIds: evt.sharedGroupIds,
-        updatedAt: Date.now()
-    };
-
-    evt.sharedGroupIds.forEach(gId => {
-        db.ref(`groupEvents/${gId}/${evt.id}`).set(sharedData);
-    });
-}
-
-function notifyGroupMembersForEvent(groupIds, evt) {
-    if (!isFirebaseReady) return;
-    const db = firebase.database();
-
-    groupIds.forEach(gId => {
-        const group = state.groups[gId];
-        if (!group || !group.members) return;
-
-        Object.keys(group.members).forEach(memberId => {
-            if (memberId !== state.profile.userId) {
-                const notifRef = db.ref(`userNotifications/${memberId}`).push();
-                notifRef.set({
-                    id: notifRef.key,
-                    title: '📅 共有予定が追加・更新されました',
-                    message: `${state.profile.userName} さんが「${evt.title}」をグループ「${group.name}」に共有しました`,
-                    timestamp: Date.now()
-                });
-            }
-        });
-    });
-}
-
-function saveEventFromModal() {
-    clearModalErrors();
-
-    const titleInput = document.getElementById('eventTitleInput');
-    const startDateInput = document.getElementById('eventStartDateInput');
-    const endDateInput = document.getElementById('eventEndDateInput');
-    const startInput = document.getElementById('eventStartInput');
-    const endInput = document.getElementById('eventEndInput');
-    const lockedInput = document.getElementById('eventLockedInput'); // 固定チェックボックスを取得
-
-    const id = document.getElementById('editEventId').value;
-    const title = titleInput ? titleInput.value.trim() : '';
-    const isImportant = document.getElementById('eventImportantInput').checked;
-    const isLocked = lockedInput ? lockedInput.checked : false; // 固定状態の取得
-    const isAllDay = document.getElementById('eventAllDayInput').checked;
-    const isRepeat = document.getElementById('eventRepeatInput').checked;
-
-    let startDate = startDateInput ? startDateInput.value : '';
-    let endDate = endDateInput ? endDateInput.value : '';
-    const startTime = startInput ? startInput.value : '';
-    const endTime = endInput ? endInput.value : '';
-
-    if (!title) {
-        if (titleInput) {
-            titleInput.style.borderColor = '#ef4444';
-            titleInput.focus();
-        }
-        showToast('⚠️ タイトルを入力してください');
-        return;
-    }
-
-    if (!startDate || !endDate) {
-        if (!startDate && startDateInput) startDateInput.style.borderColor = '#ef4444';
-        if (!endDate && endDateInput) endDateInput.style.borderColor = '#ef4444';
-        showToast('⚠️ 開始日と終了日を正しく選択してください');
-        return;
-    }
-
-    if (!isAllDay && startTime && endTime && endTime < startTime) {
-        if (startDate === endDate) {
-            endDate = dayjs(startDate).add(1, 'day').format('YYYY-MM-DD');
-            if (endDateInput) endDateInput.value = endDate;
-        }
-    } else if (startDate > endDate) {
-        if (startDateInput) startDateInput.style.borderColor = '#ef4444';
-        if (endDateInput) endDateInput.style.borderColor = '#ef4444';
-        showToast('⚠️ 終了日は開始日以降の日付に設定してください');
-        return;
-    }
-
-    recordStateForUndo(`予定の追加・保存を行いました`);
-
-    let targetEvt = null;
-
-    if (isRepeat) {
-        const selectedWeekdays = Array.from(document.querySelectorAll('.weekday-selector input[type="checkbox"]:checked')).map(cb => Number(cb.value));
-
-        if (selectedWeekdays.length === 0) {
-            showToast('⚠️ 繰り返す曜日を少なくとも1つ選択してください');
-            return;
-        }
-
-        let currDay = dayjs(startDate);
-        const endDay = dayjs(endDate);
-        let createdCount = 0;
-
-        while (currDay.isBefore(endDay) || currDay.isSame(endDay, 'day')) {
-            const dayOfWeek = currDay.day();
-
-            if (selectedWeekdays.includes(dayOfWeek)) {
-                const dayStr = currDay.format('YYYY-MM-DD');
-                const newEvt = {
-                    id: 'evt_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
-                    title,
-                    isImportant,
-                    isLocked, // 保存処理へ追加
-                    isAllDay,
-                    startDate: dayStr,
-                    endDate: dayStr,
-                    startTime: isAllDay ? '00:00' : startTime,
-                    endTime: isAllDay ? '23:59' : endTime,
-                    color: state.selectedColor,
-                    notifications: JSON.parse(JSON.stringify(currentModalNotifications)),
-                    completed: false,
-                    ownerId: state.profile.userId,
-                    ownerName: state.profile.userName
-                };
-                state.events.push(newEvt);
-                createdCount++;
-            }
-            currDay = currDay.add(1, 'day');
-        }
-
-        showToast(`✅ ${createdCount}件の繰り返し予定を作成しました`);
-    } else {
-        const existingIdx = state.events.findIndex(e => e.id === id);
-        const existingEvt = existingIdx >= 0 ? state.events[existingIdx] : null;
-
-        const eventObj = {
-            id: id || 'evt_' + Date.now(),
-            title,
-            isImportant,
-            isLocked, // 保存処理へ追加
-            isAllDay,
-            startDate,
-            endDate,
-            startTime: isAllDay ? '00:00' : startTime,
-            endTime: isAllDay ? '23:59' : endTime,
-            color: state.selectedColor,
-            notifications: JSON.parse(JSON.stringify(currentModalNotifications)),
-            completed: false,
-            ownerId: existingEvt ? (existingEvt.ownerId || state.profile.userId) : state.profile.userId,
-            ownerName: existingEvt ? (existingEvt.ownerName || state.profile.userName) : state.profile.userName,
-            sharedGroupIds: existingEvt ? existingEvt.sharedGroupIds : null
-        };
-
-        if (existingIdx >= 0) {
-            state.events[existingIdx] = eventObj;
-        } else {
-            state.events.push(eventObj);
-        }
-
-        targetEvt = eventObj;
-        showToast(`✅ 予定「${title}」を保存しました`);
-    }
-
-    if (targetEvt && targetEvt.sharedGroupIds && targetEvt.sharedGroupIds.length > 0) {
-        syncSharedEventToCloud(targetEvt);
-    }
-
-    saveData();
-    closeEventModal();
-    renderAllViews();
-}
-
-function deleteEventFromModal() {
-    const id = document.getElementById('editEventId').value;
-    const targetEvt = state.events.find(e => e.id === id);
-
-    if (targetEvt && targetEvt.isImportant) {
-        if (!confirm('⭐ この予定は「重要」に設定されています。本当に削除しますか？')) return;
-    }
-
-    if (targetEvt) {
-        recordStateForUndo(`予定「${targetEvt.title}」を削除しました`);
-
-        // 共有グループのクラウドデータ削除同期
-        if (isFirebaseReady && targetEvt.sharedGroupIds && targetEvt.sharedGroupIds.length > 0) {
-            const db = firebase.database();
-            targetEvt.sharedGroupIds.forEach(gId => {
-                db.ref(`groupEvents/${gId}/${targetEvt.id}`).remove();
-            });
-        }
-    }
-
-    state.events = state.events.filter(e => e.id !== id);
-    saveData();
-    closeEventModal();
-    renderAllViews();
-}
-/**
- * モーダルや一覧から選択した予定の共有を解除する処理
- * @param {string} eventId - 解除対象の予定ID
- * @param {string|null} targetGroupId - 特定のグループID（指定がない場合は全グループで共有解除）
- */
-function unshareEventFromModal() {
-    const id = document.getElementById('editEventId')?.value;
-    if (!id) return;
-
-    const evt = state.events.find(e => e.id === id);
-    if (!evt) return;
-
-    const sharedGroups = Array.isArray(evt.sharedGroupIds)
-        ? evt.sharedGroupIds
-        : Object.values(evt.sharedGroupIds || {});
-
-    // Firebase上のデータを確実に物理削除
-    if (isFirebaseReady && sharedGroups.length > 0) {
-        const db = firebase.database();
-        sharedGroups.forEach(gId => {
-            db.ref(`groupEvents/${gId}/${evt.id}`).remove();
-        });
-    }
-
-    // ローカル予定の共有状態をクリア
-    evt.sharedGroupIds = [];
-    saveData();
-    closeEventModal();
-    renderAllViews();
-    showToast('🔓 共有を解除しました');
-}
-// 参加中グループ全てのリアルタイム同期を開始する関数
-function syncAllMyGroups() {
-    if (!isFirebaseReady || !state.groups) return;
-    Object.keys(state.groups).forEach(groupId => {
-        listenToGroupEvents(groupId);
-    });
-}
-function unshareAllGroupEvents(eventId) {
-    const evt = state.events.find(e => e.id === eventId);
-    if (!evt) return;
-
-    const sharedGroups = getSharedGroupIds(evt);
-    if (sharedGroups.length === 0) return;
-
-    if (!confirm(`「${evt.title}」のすべてのグループ共有を解除しますか？`)) return;
-
-    // Firebase クラウド上の共有データを削除
-    if (isFirebaseReady) {
-        const db = firebase.database();
-        sharedGroups.forEach(gId => {
-            db.ref(`groupEvents/${gId}/${evt.id}`).remove();
-        });
-    }
-
-    // 自分のローカルの共有IDをクリア
-    evt.sharedGroupIds = [];
-
-    // 他人が所有者の共有予定であればローカルカレンダーからも削除
-    if (evt.ownerId && evt.ownerId !== state.profile.userId) {
-        state.events = state.events.filter(e => e.id !== eventId);
-    }
-
-    saveData();
-    closeEventModal();
-    renderAllViews();
-    showToast('🔓 共有を解除しました');
-}
-// ユーザーアイコン削除（解除）ボタンのイベント登録
-// アイコン削除（解除）の共通処理関数
-function handleRemoveUserIcon() {
-    if (!confirm('アイコンを解除して初期状態に戻しますか？')) return;
-
-    // 1. ファイル入力（<input type="file">）の選択状態をクリア
-    const iconInput = document.getElementById('userIconInput');
-    if (iconInput) {
-        iconInput.value = '';
-    }
-
-    // 2. state.profile 内のアイコン保持プロパティをすべてクリア
-    if (state.profile) {
-        state.profile.icon = null;
-        state.profile.avatar = null;
-        state.profile.avatarUrl = null;
-        state.profile.photoURL = null;
-    }
-
-    // 3. 設定画面内のプレビュー（<img> または <div>）を初期化
-    const iconPreview = document.getElementById('userIconPreview');
-    if (iconPreview) {
-        if (iconPreview.tagName === 'IMG') {
-            iconPreview.src = '';
-        }
-        iconPreview.style.backgroundImage = '';
-    }
-
-    // 4. ヘッダー等のアイコン要素（style.css の .avatar）の背景画像を消去
-    const headerAvatars = document.querySelectorAll('.avatar');
-    headerAvatars.forEach(el => {
-        el.style.backgroundImage = '';
-    });
-
-    // 5. データ保存と画面描画の更新
-    saveData();
-
-    if (typeof renderAllViews === 'function') renderAllViews();
-    if (typeof renderProfile === 'function') renderProfile();
-    if (typeof renderHeader === 'function') renderHeader();
-
-    showToast('🗑️ アイコンを解除しました');
-}
-
-// ボタンのイベント登録（DOMロード時・初期化時にアタッチ）
-document.addEventListener('DOMContentLoaded', () => {
-    const removeIconBtn = document.getElementById('removeUserIconBtn');
-    if (removeIconBtn) {
-        removeIconBtn.addEventListener('click', (e) => {
-            e.preventDefault(); // ボタンクリックによるフォーム送信・ページ再読み込みを防止
-            handleRemoveUserIcon();
-        });
-    }
-});
-// 予定追加・編集モーダルの開閉時に右下プラスボタンを非表示/表示する処理
-(function() {
-    const toggleFabVisibility = (visible) => {
-        const fabBtn = document.getElementById('addEventBtn') || document.querySelector('.fab-btn');
-        if (!fabBtn) return;
-
-        if (visible) {
-            // 表示: インラインスタイルを削除して既存のCSS表示を有効化
-            fabBtn.style.removeProperty('display');
-        } else {
-            // 非表示: !important 属性付きで非表示に変更
-            fabBtn.style.setProperty('display', 'none', 'important');
-        }
-    };
-
-    // openEventModal 実行時にボタンを非表示
-    if (typeof openEventModal === 'function') {
-        const originalOpenModal = openEventModal;
-        openEventModal = function(...args) {
-            originalOpenModal.apply(this, args);
-            toggleFabVisibility(false);
-        };
-    }
-
-    // closeEventModal 実行時にボタンを再表示
-    if (typeof closeEventModal === 'function') {
-        const originalCloseModal = closeEventModal;
-        closeEventModal = function(...args) {
-            originalCloseModal.apply(this, args);
-            toggleFabVisibility(true);
-        };
-    }
-})();
-// 重複をすべて削除し、これだけにまとめます
-const saveEventBtn = document.getElementById('saveEventBtn') || document.querySelector('.btn-save');
-
-if (saveEventBtn) {
-    saveEventBtn.addEventListener('click', saveEventFromModal);
-}
-// ==========================================
-// メンバー削除・通知削除・再参加共有復元処理
-// ==========================================
-
-document.addEventListener('DOMContentLoaded', () => {
-    const removeBtn = document.getElementById('menberRemoveBtn');
-    if (removeBtn) {
-        removeBtn.addEventListener('click', handleRemoveMemberClick);
-    }
-});
-
-/**
- * 「メンバー削除」ボタンが押された時の処理
- */
-async function handleRemoveMemberClick() {
-    // 現在開いているモーダルや選択状態から groupId と targetUserId を安全に取得
-    const groupId = getActiveGroupId();
-    const targetUserId = getSelectedMemberId();
-
-    if (!groupId) {
-        alert('グループが選択されていないか、グループ情報を取得できませんでした。');
-        return;
-    }
-    if (!targetUserId) {
-        alert('削除対象のメンバーが選択されていません。');
-        return;
-    }
-
-    // 自分のIDを取得（自分の誤削除を防止）
-    const myId = (typeof state !== 'undefined' && state.profile && state.profile.userId)
-        ? state.profile.userId
-        : localStorage.getItem('schola_user_id');
-
-    if (targetUserId === myId) {
-        alert('自分自身をこのボタンから削除することはできません。グループ脱退機能を利用してください。');
-        return;
-    }
-
-    if (!confirm('このメンバーをグループから削除しますか？\n（共有されていた通知およびイベントも削除されます）')) {
-        return;
-    }
-
-    await removeMemberFromGroup(groupId, targetUserId);
-}
-
-/**
- * メンバーをグループから削除し、関連通知・共有イベントを消去する
- */
-async function removeMemberFromGroup(groupId, targetUserId) {
-    try {
-        if (typeof firebase === 'undefined' || !firebase.database) {
-            throw new Error('Firebase Database が初期化されていません。');
-        }
-
-        const db = firebase.database();
-        const updates = {};
-
-        // 1. グループのメンバー一覧から削除
-        updates[`groups/${groupId}/members/${targetUserId}`] = null;
-
-        // 2. 削除されたユーザーの参加グループ一覧から削除
-        updates[`users/${targetUserId}/groups/${groupId}`] = null;
-
-        // 3. 削除されたユーザーの個人共有イベント領域から対象グループのイベントを全削除
-        updates[`users/${targetUserId}/sharedEvents/${groupId}`] = null;
-
-        // 4. グループ内の特定イベントから対象ユーザーを個別除外
-        const groupEventsSnap = await db.ref(`groups/${groupId}/events`).once('value');
-        if (groupEventsSnap.exists()) {
-            const events = groupEventsSnap.val();
-            Object.keys(events).forEach(evtId => {
-                updates[`groups/${groupId}/events/${evtId}/sharedUserIds/${targetUserId}`] = null;
-            });
-        }
-
-        // FirebaseRTDBを一括更新（アトミック処理）
-        await db.ref().update(updates);
-
-        // 5. 該当ユーザーに送信済みの該当グループ通知を削除
-        await cleanupUserGroupNotifications(targetUserId, groupId);
-
-        // ローカルステートの更新と再描画（存在する場合）
-        if (typeof state !== 'undefined' && state.events) {
-            // 削除されたグループイベントをローカルから除外
-            state.events = state.events.filter(e => {
-                const groupIds = typeof getSharedGroupIds === 'function' ? getSharedGroupIds(e) : (e.sharedGroupIds || []);
-                return !groupIds.includes(groupId);
-            });
-            if (typeof saveLocalData === 'function') saveLocalData();
-            if (typeof renderCalendar === 'function') renderCalendar();
-        }
-
-        if (typeof showToast === 'function') {
-            showToast('メンバーを削除し、共有通知とイベントを消去しました。');
-        } else {
-            alert('メンバーを削除し、共有通知とイベントを消去しました。');
-        }
-
-        // メンバーリスト表示の更新処理があれば呼び出し
-        if (typeof renderGroupMembers === 'function') renderGroupMembers(groupId);
-        if (typeof updateGroupList === 'function') updateGroupList();
-
-    } catch (error) {
-        console.error('メンバー削除エラー:', error);
-        alert('メンバーの削除に失敗しました: ' + error.message);
-    }
-}
-
-/**
- * 削除対象ユーザーの通知ノードから指定グループの通知を削除
- */
-async function cleanupUserGroupNotifications(userId, groupId) {
-    try {
-        const db = firebase.database();
-        const notifRef = db.ref(`users/${userId}/notifications`);
-
-        const snapshot = await notifRef.once('value');
-        if (snapshot.exists()) {
-            const notifs = snapshot.val();
-            const deletePromises = [];
-
-            Object.keys(notifs).forEach(key => {
-                if (notifs[key] && notifs[key].groupId === groupId) {
-                    deletePromises.push(db.ref(`users/${userId}/notifications/${key}`).remove());
-                }
-            });
-
-            await Promise.all(deletePromises);
-        }
-    } catch (err) {
-        console.warn('通知クリーンアップ失敗:', err);
-    }
-}
-
-/**
- * 一度削除されたメンバーがグループに再参加した時の共有復元処理
- * （メンバー再招待・受諾時に呼び出します）
- */
-async function rejoinMemberToGroup(groupId, targetUserId) {
-    try {
-        if (typeof firebase === 'undefined' || !firebase.database) return;
-
-        const db = firebase.database();
-        const updates = {};
-
-        // 1. グループメンバーとして再登録
-        updates[`groups/${groupId}/members/${targetUserId}`] = true;
-        updates[`users/${targetUserId}/groups/${groupId}`] = true;
-
-        await db.ref().update(updates);
-
-        // 2. グループ内の現在のマスターイベントを取得してユーザーの共有領域へ復元
-        const groupEventsSnap = await db.ref(`groups/${groupId}/events`).once('value');
-        if (groupEventsSnap.exists()) {
-            const groupEvents = groupEventsSnap.val();
-            await db.ref(`users/${targetUserId}/sharedEvents/${groupId}`).set(groupEvents);
-        }
-
-        // 3. 共有復活の通知を作成
-        const newNotifRef = db.ref(`users/${targetUserId}/notifications`).push();
-        await newNotifRef.set({
-            groupId: groupId,
-            title: '共有の復元',
-            message: 'グループに再参加したため、共有スケジュールが復元されました。',
-            createdAt: firebase.database.ServerValue.TIMESTAMP
-        });
-
-        if (typeof showToast === 'function') {
-            showToast('グループ共有が復元されました。');
-        }
-
-    } catch (error) {
-        console.error('共有復元エラー:', error);
-    }
-}
-
-// ==========================================
-// 補助用：画面・モーダルからIDを取得する関数
-// ==========================================
-
-function getActiveGroupId() {
-    // モーダルや画面上のデータ属性、または選択中の要素からgroupIdを探す
-    const groupModal = document.getElementById('groupModal') || document.getElementById('inviteModal');
-    if (groupModal && groupModal.dataset && groupModal.dataset.groupId) {
-        return groupModal.dataset.groupId;
-    }
-    const groupSelect = document.getElementById('groupSelect') || document.getElementById('shareGroupSelect');
-    if (groupSelect && groupSelect.value) {
-        return groupSelect.value;
-    }
-    if (typeof state !== 'undefined' && (state.currentGroupId || state.activeGroupId)) {
-        return state.currentGroupId || state.activeGroupId;
-    }
-    return null;
-}
-
-function getSelectedMemberId() {
-    // メンバー一覧モーダル内で選択（チェック／タップ）されているメンバーのIDを取得
-    const selectedItem = document.querySelector('.member-item.selected, .member-item input[type="radio"]:checked, .member-item input[type="checkbox"]:checked');
-    if (selectedItem) {
-        return selectedItem.dataset.userId || selectedItem.value || selectedItem.closest('[data-user-id]')?.dataset.userId;
-    }
-    const memberSelect = document.getElementById('memberSelect') || document.getElementById('groupMemberListSelect');
-    if (memberSelect && memberSelect.value) {
-        return memberSelect.value;
-    }
-    return null;
-}
-// プロフィール編集ボタン（「再設定 / 名前変更」）のイベント設定
-const editProfileBtn = document.getElementById('editProfileBtn');
-if (editProfileBtn) {
-    editProfileBtn.addEventListener('click', () => {
-        const userIdInput = document.getElementById('setupUserIdInput');
-        const userNameInput = document.getElementById('setupUserNameInput');
-        const profileCard = document.getElementById('profileSetupCard');
-        const saveBtn = document.getElementById('saveProfileBtn');
-        const cancelBtn = document.getElementById('cancelProfileEditBtn');
-
-        if (profileCard) profileCard.classList.remove('hidden');
-        if (userIdInput) {
-            userIdInput.value = state.profile.userId;
-            userIdInput.disabled = true; // ★ ユーザーIDは変更不可（固定）
-        }
-        if (userNameInput) {
-            userNameInput.value = state.profile.userName;
-        }
-        if (saveBtn) saveBtn.textContent = 'ユーザーネームを保存';
-        if (cancelBtn) cancelBtn.classList.remove('hidden');
-    });
-}
-
-// キャンセルボタン
-const cancelProfileEditBtn = document.getElementById('cancelProfileEditBtn');
-if (cancelProfileEditBtn) {
-    cancelProfileEditBtn.addEventListener('click', () => {
-        document.getElementById('profileSetupCard').classList.add('hidden');
-    });
-}
-
-// プロフィール保存処理（ユーザーネームのみ更新に対応）
-const saveProfileBtn = document.getElementById('saveProfileBtn');
-if (saveProfileBtn) {
-    saveProfileBtn.addEventListener('click', () => {
-        const userIdInput = document.getElementById('setupUserIdInput');
-        const userNameInput = document.getElementById('setupUserNameInput');
-        
-        const newUserId = userIdInput.value.trim();
-        const newUserName = userNameInput.value.trim();
-
-        if (!newUserName) {
-            alert('ユーザーネームを入力してください。');
-            return;
-        }
-
-        // 既存のユーザーIDがある場合はそのまま使用
-        const finalUserId = state.profile.userId || newUserId;
-        if (!finalUserId) {
-            alert('ユーザーIDを入力してください。');
-            return;
-        }
-
-        state.profile.userId = finalUserId;
-        state.profile.userName = newUserName;
-
-        saveData(); // ローカルストレージ＆クラウド同期
-
-        // Firebase上のユーザーネームのみ更新
-        if (isFirebaseReady && state.profile.userId) {
-            firebase.database().ref('users/' + state.profile.userId + '/userName').set(newUserName);
-        }
-
-        showToast('ユーザーネームを更新しました！');
-        renderGroupSection();
-    });
-}
-// メンバー一覧レンダリング関数（例）
-function renderGroupMemberList(groupId, members) {
-    const memberListContainer = document.getElementById('groupMemberList');
-    if (!memberListContainer) return;
-
-    memberListContainer.innerHTML = '';
-
-    Object.entries(members).forEach(([memberId, memberData]) => {
-        const memberRow = document.createElement('div');
-        memberRow.className = 'member-item-row';
-        memberRow.style.cssText = 'display:flex; justify-style:space-between; align-items:center; padding:6px 0; border-bottom:1px solid #e2e8f0;';
-
-        const isMe = memberId === state.profile.userId;
-        const displayName = memberData.userName || memberData.name || memberId;
-
-        memberRow.innerHTML = `
-            <span>👤 ${displayName} ${isMe ? '(自分)' : ''}</span>
-            ${!isMe ? `<button class="btn btn-small remove-member-btn" data-user-id="${memberId}" style="background-color:#fee2e2; color:#ef4444; border:none; padding:2px 8px; border-radius:4px;">削除</button>` : ''}
-        `;
-
-        // メンバー削除ボタンの動作
-        const removeBtn = memberRow.querySelector('.remove-member-btn');
-        if (removeBtn) {
-            removeBtn.addEventListener('click', () => {
-                removeMemberFromGroup(groupId, memberId, displayName);
-            });
-        }
-
-        memberListContainer.appendChild(memberRow);
-    });
-}
-
-// メンバー削除（追放）ロジック
-function removeMemberFromGroup(groupId, memberId, memberName) {
-    if (!confirm(`「${memberName}」をこのグループから削除しますか？`)) {
-        return;
-    }
-
-    if (!isFirebaseReady) {
-        alert('ネットワーク接続を確認してください。');
-        return;
-    }
-
-    const db = firebase.database();
-
-    // 1. グループからメンバーを削除
-    db.ref(`groups/${groupId}/members/${memberId}`).remove()
-        .then(() => {
-            // 2. 対象ユーザーのグループ一覧からも削除
-            return db.ref(`users/${memberId}/groups/${groupId}`).remove();
-        })
-        .then(() => {
-            showToast(`「${memberName}」をグループから削除しました`);
-            // ローカルデータの更新 & 再描画
-            if (state.groups[groupId] && state.groups[groupId].members) {
-                delete state.groups[groupId].members[memberId];
-            }
-            renderGroupSection();
-        })
-        .catch((err) => {
-            console.error('メンバー削除エラー:', err);
-            alert('メンバーの削除に失敗しました。');
-        });
-}
-// グループ削除イベントの初期化
-function initGroupDeleteEvent() {
-    const deleteBtn = document.getElementById('deleteGroupBtn');
-    if (!deleteBtn) return;
-
-    deleteBtn.addEventListener('click', () => {
-        const activeGroupId = getActiveGroupId(); // 選択中のグループIDを取得
-        if (!activeGroupId) {
-            alert('削除対象のグループが選択されていません。');
-            return;
-        }
-
-        const groupName = state.groups[activeGroupId]?.name || 'このグループ';
-        deleteGroup(activeGroupId, groupName);
-    });
-}
-initGroupDeleteEvent();
-
-// グループ削除ロジック
-function deleteGroup(groupId, groupName) {
-    if (!confirm(`本当「${groupName}」を削除（解散）しますか？\nこの操作は元に戻せません。`)) {
-        return;
-    }
-
-    if (!isFirebaseReady) {
-        alert('ネットワーク接続を確認してください。');
-        return;
-    }
-
-    const db = firebase.database();
-    const group = state.groups[groupId];
-    const memberIds = group && group.members ? Object.keys(group.members) : [state.profile.userId];
-
-    // 1. 各メンバーの users/{memberId}/groups/{groupId} を削除
-    const updates = {};
-    memberIds.forEach(mId => {
-        updates[`users/${mId}/groups/${groupId}`] = null;
-    });
-    // 2. groups/{groupId} ノードを削除
-    updates[`groups/${groupId}`] = null;
-
-    db.ref().update(updates)
-        .then(() => {
-            showToast(`グループ「${groupName}」を削除しました`);
-            delete state.groups[groupId];
-            state.selectedGroupId = null;
-            renderGroupSection();
-        })
-        .catch((err) => {
-            console.error('グループ削除エラー:', err);
-            alert('グループの削除に失敗しました。');
-        });
 }
