@@ -500,6 +500,7 @@ function renderAllViews() {
     renderDetailedList();
     renderGroupSection();
     renderSettingsColorPalette();
+    renderFriendSection();
 }
 
 function initDayWeekView() {
@@ -4328,4 +4329,67 @@ function renderGroupDetailView(container) {
             renderGroupSection();
         };
     }
+}
+// 個別のフレンドを削除する処理
+function removeFriend(friendId) {
+    const friendName = state.friends ? state.friends[friendId] : '';
+    if (!friendName) return;
+
+    if (!confirm(`「${friendName}」さんをフレンド一覧から削除しますか？`)) {
+        return;
+    }
+
+    const currentUserId = state.profile ? state.profile.userId : null;
+
+    if (typeof isFirebaseReady !== 'undefined' && isFirebaseReady && currentUserId) {
+        const db = firebase.database();
+        // 自分のフレンドリストから対象ユーザーを削除
+        db.ref(`friends/${currentUserId}/${friendId}`).remove();
+        // 相手のフレンドリストからも自分を削除
+        db.ref(`friends/${friendId}/${currentUserId}`).remove();
+    }
+
+    // ローカル状態の更新
+    if (state.friends) {
+        delete state.friends[friendId];
+    }
+
+    if (typeof showToast === 'function') showToast(`🤝 「${friendName}」さんをフレンドから削除しました`);
+    if (typeof saveData === 'function') saveData();
+    
+    // 画面の再描画
+    renderFriendSection();
+    if (typeof renderAllViews === 'function') renderAllViews();
+}
+
+// フレンド一覧を表示・更新する関数 (id="friendsList" を取得)
+function renderFriendSection() {
+    const container = document.getElementById('friendsList');
+    if (!container) return;
+
+    container.innerHTML = '';
+
+    const friendEntries = Object.entries(state.friends || {});
+
+    if (friendEntries.length === 0) {
+        container.innerHTML = '<div style="font-size:0.8rem; color:#94a3b8;">まだフレンドがいません</div>';
+        return;
+    }
+
+    friendEntries.forEach(([fId, fName]) => {
+        const item = document.createElement('div');
+        item.style.cssText = 'display: flex; justify-content: space-between; align-items: center; background: #f8fafc; border: 1px solid #e2e8f0; padding: 6px 10px; border-radius: 8px; font-size: 0.8rem; color: #334155;';
+
+        item.innerHTML = `
+            <span>🤝 ${fName}</span>
+            <button type="button" class="remove-friend-btn" title="${fName}さんを削除" style="border: none; background: transparent; color: #ef4444; font-weight: bold; cursor: pointer; padding: 2px 6px; font-size: 0.85rem; line-height: 1;">✕</button>
+        `;
+
+        item.querySelector('.remove-friend-btn').onclick = (e) => {
+            e.stopPropagation();
+            removeFriend(fId);
+        };
+
+        container.appendChild(item);
+    });
 }
